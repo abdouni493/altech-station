@@ -135,12 +135,12 @@ section('Cafétéria — une ardoise reprise, réglée à moitié');
   check('reste de la seule reprise', rest.rest, 7000);
 
   // Le tiroir de la partie doit voir l'argent de la reprise entrer.
-  const cash = moduleCaisseMovements(state, 'cafeteria' as any);
+  const cash = moduleCaisseMovements(state, 'magasin' as any);
   const openLine = cash.find(m => m.id === 'open-pay-p1');
   check("le règlement de la reprise entre en caisse", openLine?.amount, 5000);
 
   // Et le rapport de la partie doit réclamer ce qui reste dessus.
-  const report = computeModuleReport(state, 'cafeteria' as any, '2026-01-01', '2026-12-31');
+  const report = computeModuleReport(state, 'magasin' as any, '2026-01-01', '2026-12-31');
   const reprise = report.clientDebts.find(d => d.ref === 'REPRISE');
   check('la reprise figure parmi les créances', reprise?.rest, 7000);
   check('la créance totale de la partie', report.clientDebtTotal, 7300);

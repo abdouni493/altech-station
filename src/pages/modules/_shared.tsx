@@ -766,10 +766,9 @@ export function ProductModal({
         </div>
 
         {/* ── Références & compatibilité véhicule ────────────────────────────
-            Propres à la partie Lavage & Vidange, qui vend des pièces
-            détachées : une pièce se cherche par son numéro ou par la voiture
-            qu'elle équipe, jamais par son nom de rayon. Ces deux blocs
-            n'apparaissent pas en Cafétéria, où ils n'auraient aucun sens. */}
+            Le Magasin vend des pièces détachées : une pièce se cherche par son
+            numéro ou par la voiture qu'elle équipe, jamais par son nom de
+            rayon. */}
         {showAutoParts && (
           <>
             <div className="sm:col-span-2">

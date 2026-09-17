@@ -31,8 +31,7 @@ export const CAISSE_ID = 'CAISSE';
  */
 export const CAISSE_PART_ID = {
   carburant: 'CAISSE_CARBURANT',
-  cafeteria: 'CAISSE_CAFETERIA',
-  lavage: 'CAISSE_LAVAGE',
+  magasin: 'CAISSE_MAGASIN',
 } as const;
 
 export const CASH_ACCOUNT_IDS: string[] = [CAISSE_ID, ...Object.values(CAISSE_PART_ID)];
@@ -40,8 +39,7 @@ export const CASH_ACCOUNT_IDS: string[] = [CAISSE_ID, ...Object.values(CAISSE_PA
 export const CASH_ACCOUNT_LABEL: Record<string, string> = {
   [CAISSE_ID]: 'Caisse générale',
   [CAISSE_PART_ID.carburant]: 'Caisse Carburant',
-  [CAISSE_PART_ID.cafeteria]: 'Caisse Cafétéria',
-  [CAISSE_PART_ID.lavage]: 'Caisse Lavage & Vidange',
+  [CAISSE_PART_ID.magasin]: 'Caisse Magasin',
 };
 
 const isCashAccount = (id?: string): boolean => !!id && CASH_ACCOUNT_IDS.includes(id);

@@ -314,7 +314,7 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
       ) : (
         /* ── Les cartes clients ───────────────────────────────────
            Même dessin que l’écran Clients du Carburant : un client est un client,
-           qu’il prenne du gasoil, un café ou un lavage, et rien ne justifiait
+           qu’il prenne du gasoil ou une pièce au magasin, et rien ne justifiait
            qu’on doive réapprendre à lire sa fiche en changeant d’activité.
            Les trois chiffres se relisent l’un l’autre : consommé − réglé = reste. */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -74,17 +74,17 @@ console.log("La caisse de la partie encaisse le règlement à sa date");
 {
   const st: any = {
     caisse: [], purchases: [], expenses: [], workers: [], products: [], clients: [], suppliers: [],
-    reparations: [{
-      id: 'R1', ref: 'I-001', date: '2026-03-10', clientId: 'C1', clientName: 'Atelier Nord',
-      kind: 'lavage', total: 5_000, paid: 5_000, rest: 0, status: 'done',
+    sales: [{
+      id: 'R1', ref: 'V-001', date: '2026-03-10', clientId: 'C1', clientName: 'Atelier Nord',
+      items: [], subtotal: 5_000, reduction: 0,
+      total: 5_000, paid: 5_000, rest: 0, status: 'payée',
       payments: [
         { id: 'RP1', date: '2026-03-10', amount: 1_000, mode: 'Espèces' },
         { id: 'RP2', date: '2026-08-19', amount: 4_000, mode: 'Espèces' },
       ],
     }],
-    sales: [],
   };
-  const rows = moduleCaisseMovements(st, 'lavage' as any, [], []);
+  const rows = moduleCaisseMovements(st, 'magasin' as any, [], []);
   const solde = rows.reduce((s, r) => s + r.amount, 0);
   check('le tiroir contient bien les 5 000 DA', solde, 5_000);
   check('en deux mouvements, un par versement', rows.length, 2);

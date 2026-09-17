@@ -105,7 +105,7 @@ console.log('\nLe tiroir COMMUN n\'est pas ce que la station détient');
 // Carburant, et porte les 5000 de la brigade que la caisse Carburant compte déjà.
 check('tiroir commun au grand livre', r.drawerCash, -1300);
 check('il n\'est pas repris dans le total', r.cashTotal === r.drawerCash, false);
-check('une ligne par tiroir, toutes comptées', r.cash.rows.length, 4);
+check('une ligne par tiroir, toutes comptées', r.cash.rows.length, 3);
 check('aucune ligne de trésorerie hors total', r.cash.rows.filter(x => x.informational).length, 0);
 
 // ─── Le calcul se relit sous chaque solde ────────────────────────────────────
@@ -155,19 +155,15 @@ check('sa part en banque', caf.bankTotal, 700);
 check('entrées du Magasin sur la période', caf.cash.flow?.in, 4000);
 check('sorties du Magasin sur la période', caf.cash.flow?.out, 1500);
 
-const lav = filterWorkingCapital(r, 'magasin');
-check('caisse Magasin filtrée (2)', lav.cashTotal, magasinCash);
-// Le dépôt est de juillet : rien dans la période, tout « hors période ».
-check('le solde du Lavage vient d\'avant la période', lav.cash.flow?.outside, 900);
-check('aucun mouvement dans la période', lav.cash.flow?.count, 0);
-check('le Lavage n\'a rien mis en banque', lav.bankTotal, 0);
-check('son bloc banque est vide, donc sans flux', lav.banks.flow, undefined);
+// Le dépôt de juillet est hors période : il reste dans le solde repris.
+check("le solde repris vient d'avant la période", caf.cash.flow?.outside, 900);
+check('le Magasin a déposé 700 en banque', caf.bankTotal, 700);
 
 const fin = filterWorkingCapital(r, 'systeme');
 check('la Finance garde son tiroir', fin.cashTotal, 1700);
-check('mais plus rien en banque : elle n\'y provoque aucun mouvement', fin.bankTotal, 0);
-check('les quatre parts refont le total en banque',
-  carb.bankTotal + caf.bankTotal + lav.bankTotal + fin.bankTotal, treasury.bankTotal);
+check("mais plus rien en banque : elle n'y provoque aucun mouvement", fin.bankTotal, 0);
+check('les trois parts refont le total en banque',
+  carb.bankTotal + caf.bankTotal + fin.bankTotal, treasury.bankTotal);
 
 // ─── L'argent RÉEL en banque reste lisible sous un filtre ────────────────────
 // `bankTotal` filtré est une PART : il ne dit plus ce que la station possède.
@@ -176,7 +172,7 @@ check('les quatre parts refont le total en banque',
 console.log('\nFiltré, le total de tous les comptes reste affiché');
 check('sans filtre, part et total se confondent', r.stationBankTotal, r.bankTotal);
 check('le total ne bouge pas sur le Carburant', carb.stationBankTotal, treasury.bankTotal);
-check('ni sur le Lavage, qui n\'y a rien mis', lav.stationBankTotal, treasury.bankTotal);
+check("ni sur le Magasin", caf.stationBankTotal, treasury.bankTotal);
 check('la part reste la part', carb.bankTotal === carb.stationBankTotal, false);
 check('les comptes restent déroulés, filtre ou non', carb.accounts.length, r.accounts.length);
 check('chacun garde son solde ENTIER', carb.accounts[0]?.balance, b1.balance);
@@ -200,7 +196,7 @@ check('le bloc ne parle plus de part', solo.banks.label, 'Comptes bancaires');
 // ─── Le tableau par activité recompose l'écran ───────────────────────────────
 console.log('\nLe tableau par activité rend le total affiché');
 const sumBy = (f: (p: typeof r.parts[number]) => number) => r.parts.reduce((s, p) => s + f(p), 0);
-check('quatre lignes : trois activités et la Finance', r.parts.length, 4);
+check('trois lignes : deux activités et la Finance', r.parts.length, 3);
 check('la colonne caisse fait le total des caisses', sumBy(p => p.cash), r.cashTotal);
 check('la colonne banque fait le total en banque', sumBy(p => p.bank), r.bankTotal);
 check('le total du tableau EST le fonds de roulement', sumBy(p => p.total), r.workingCapital);

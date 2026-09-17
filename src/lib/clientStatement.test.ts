@@ -132,9 +132,8 @@ section('Partie : versements datés et versements reconstruits');
         subtotal: 100, reduction: 0, total: 100, paid: 100, rest: 0, status: 'retournée', refundedAmount: 100,
       },
     ],
-    reparations: [],
   };
-  const st = bizClientStatement(state, CLIENT as any, 'Cafétéria');
+  const st = bizClientStatement(state, CLIENT as any, 'Magasin');
 
   check('documents ET reglements sont au journal', st.lines.length, 6);
   check('la vente retournée ne coûte rien', st.lines.find(l => l.id === 'sale-s3')?.charged, 0);
@@ -147,38 +146,18 @@ section('Partie : versements datés et versements reconstruits');
   check('le détail article est porté', st.lines.find(l => l.id === 'sale-s1')?.items?.[0]?.total, 500);
 
   // Le mois de mars entier redonne exactement le compte complet…
-  const mars = bizClientStatement(state, CLIENT as any, 'Cafétéria', '2026-03-01', '2026-03-31');
+  const mars = bizClientStatement(state, CLIENT as any, 'Magasin', '2026-03-01', '2026-03-31');
   check('mars entier = tout le compte', mars.closingDebt, st.closingDebt);
 
   // …et la seule première semaine laisse le chèque du 15 dehors.
-  const semaine = bizClientStatement(state, CLIENT as any, 'Cafétéria', '2026-03-01', '2026-03-07');
+  const semaine = bizClientStatement(state, CLIENT as any, 'Magasin', '2026-03-01', '2026-03-07');
   check('le chèque du 15 sort de la première semaine', semaine.totals.paid, 200);
   check('la facture du 8 aussi', semaine.lines.length, 4);
 }
 
-section('Une intervention porte ses prestations ET ses produits');
-{
-  const state: any = {
-    sales: [],
-    reparations: [{
-      id: 'r1', ref: 'LAV-0001', kind: 'lavage', clientId: 'c1', clientName: 'Belaid',
-      car: { marque: 'Renault', name: 'Clio', immatriculation: '12345-116-31' },
-      serviceTotal: 800,
-      prestations: [{ id: 'pr1', kind: 'lavage', label: 'Lavage complet', amount: 800, workerIds: [] }],
-      usedProducts: [{ productId: 'p9', productName: 'Shampoing', qty: 2, unitPrice: 150, total: 300 }],
-      total: 1100, paid: 600, rest: 500, status: 'finalized', date: '2026-04-01T08:00:00', workers: [],
-    }],
-  };
-  const st = bizClientStatement(state, CLIENT as any, 'Lavage & Vidange');
-  check('prestation + produit sont détaillés', st.lines[0].items?.length, 2);
-  check('le total de l\'intervention', st.totals.charged, 1100);
-  check('le reste dû', st.closingDebt, 500);
-  check("l'immatriculation est au libellé", st.lines[0].label.includes('12345-116-31'), true);
-}
-
 section('Un compte vide reste lisible');
 {
-  const st = bizClientStatement({ sales: [], reparations: [] } as any, CLIENT as any, 'Cafétéria');
+  const st = bizClientStatement({ sales: [] } as any, CLIENT as any, 'Magasin');
   check('aucune ligne', st.lines.length, 0);
   check('aucune dette', st.closingDebt, 0);
   check('aucun règlement', st.totals.paid, 0);

@@ -1232,7 +1232,7 @@ const emptySettings: StationSettings = {
   fuelPrices:    { SUPER: 0, DIESEL: 0, ESSENCE: 0, GASOIL: 0, GPL: 0 },
   fuelBuyPrices: { SUPER: 0, DIESEL: 0, ESSENCE: 0, GASOIL: 0, GPL: 0 },
   conversionTables: {},
-  productCategories: ['Lubrifiants', 'Accessoires', 'Lavage', 'Magasin'],
+  productCategories: ['Lubrifiants', 'Filtration', 'Accessoires', 'Entretien'],
   expenseCategories: ['Salaires', 'Entretien', 'Électricité', 'Eau', 'Loyer', 'Impôts', 'Divers'],
   productUnits: DEFAULT_PRODUCT_UNITS,
 };

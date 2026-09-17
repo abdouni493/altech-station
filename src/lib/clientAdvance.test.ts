@@ -166,14 +166,14 @@ section('Cafétéria — avance initiale de 20 000, vente à crédit de 5 000');
   check('ce qui lui reste', pos.left, 15000);
 
   // Le rapport de la partie ne réclame plus ce qu'il détient déjà.
-  const report = computeModuleReport(state, 'cafeteria' as any, '2026-01-01', '2026-12-31');
+  const report = computeModuleReport(state, 'magasin' as any, '2026-01-01', '2026-12-31');
   check('la créance de la partie est éteinte', report.clientDebtTotal, 0);
   check("et l'avance détenue est dite", report.clientAdvanceTotal, 15000);
   const avanceRow = report.clientDebts.find(d => d.ref === 'AVANCE');
   check('une ligne AVANCE explique la déduction', avanceRow?.rest, -5000);
 
   // Une reprise n'a fait entrer aucun billet : le tiroir ne bouge pas.
-  check('le tiroir de la partie reste à zéro', moduleCaisseBalance(state, 'cafeteria' as any), 0);
+  check('le tiroir de la partie reste à zéro', moduleCaisseBalance(state, 'magasin' as any), 0);
 }
 
 // ─── 5. Lavage — avance et dette de reprise sur la même fiche ────────────────
@@ -200,7 +200,7 @@ section("Lavage — 8 000 de dette reprise et 3 000 d'avance");
   check('reste réclamable', pos.net, 3000);
 
   // Le règlement encaissé, LUI, entre bien au tiroir — la reprise, non.
-  check('seul le règlement entre en caisse', moduleCaisseBalance(state, 'lavage' as any), 2000);
+  check('seul le règlement entre en caisse', moduleCaisseBalance(state, 'magasin' as any), 2000);
 }
 
 // ─── 6b. Cafétéria — un trop-perçu devient une avance ────────────────────────
@@ -235,12 +235,12 @@ section('Cafétéria — dette de 1 000, le client règle 2 500');
   check('la position nette : rien à réclamer', pos.net, 0);
   check('avance disponible', pos.left, 1500);
 
-  const report = computeModuleReport(state, 'cafeteria' as any, '2026-01-01', '2026-12-31');
+  const report = computeModuleReport(state, 'magasin' as any, '2026-01-01', '2026-12-31');
   check('la partie ne réclame plus rien', report.clientDebtTotal, 0);
   check('elle détient 1 500 d’avance', report.clientAdvanceTotal, 1500);
 
   // Les 2 500 sont bien entrés au tiroir : le règlement ET le trop-perçu.
-  check('le tiroir compte l’intégralité versée', moduleCaisseBalance(state, 'cafeteria' as any), 2500);
+  check('le tiroir compte l’intégralité versée', moduleCaisseBalance(state, 'magasin' as any), 2500);
 }
 
 // ─── 6. Le lecteur de l'avance ───────────────────────────────────────────────

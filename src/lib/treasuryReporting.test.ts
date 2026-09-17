@@ -109,7 +109,7 @@ const appBank = {
     { id: 'b3', date: '2026-08-05T10:00:00.000Z', kind: 'TPE', amount: 6000, accountTo: 'B1', part: 'carburant', refType: 'brigade', refId: 'br1' },
     // Virement entre deux tiroirs : lu depuis le tiroir SOURCE, celui que la
     // ligne porte et d'où l'argent est bien parti.
-    { id: 'b4', date: '2026-08-06T10:00:00.000Z', kind: 'TRANSFER', amount: 5000, accountFrom: CAISSE_ID, accountTo: CAISSE_PART_ID.cafeteria, part: 'systeme' },
+    { id: 'b4', date: '2026-08-06T10:00:00.000Z', kind: 'TRANSFER', amount: 5000, accountFrom: CAISSE_ID, accountTo: CAISSE_PART_ID.magasin, part: 'systeme' },
   ],
   purchases: [{ id: 'p1', date: '2026-08-03T10:00:00.000Z', amountPaid: 30000, supplierId: 's1' }],
   expenses: [],
