@@ -179,7 +179,7 @@ export default function CaisseDetailModal({ open, onClose, detail, from, to }: {
           <p className="text-[11px] text-slate-400 italic mt-3">
             Seuls les mouvements enregistrés au grand livre bougent cette caisse : dépôts et retraits,
             encaissements d'espèces des brigades, achats et dépenses réglés en espèces, virements vers
-            ou depuis un compte bancaire. Les recettes de la cafétéria et du lavage vivent dans la caisse
+            ou depuis un compte bancaire. Les recettes du magasin vivent dans la caisse
             de leur activité tant qu'elles n'ont pas été versées ici.
           </p>
         </div>

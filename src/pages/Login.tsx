@@ -3,10 +3,10 @@ import { useTranslation } from "react-i18next";
 import {
   Fuel, Globe, User, Lock, ArrowRight, ShieldCheck, Zap,
   BarChart3, Clock, Eye, EyeOff, UserPlus, Mail, AtSign, X,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { signIn, signUpAdmin, signOut, adminExists, probeBackend, BACKEND_STATUS_MESSAGE } from "../lib/supabase";
+import { signIn, signInDemoAdmin, signUpAdmin, signOut, adminExists, probeBackend, BACKEND_STATUS_MESSAGE } from "../lib/supabase";
 import { useAppState } from "../store/AppContext";
 
 type UserRole = 'admin' | 'pompiste' | 'chef_brigade' | 'gerant' | 'magasin';
@@ -114,6 +114,23 @@ const Login = ({ onLogin }: LoginProps) => {
       return;
     }
     onLogin(role, result.user?.id);
+  };
+
+  // ── Connexion au compte de démonstration ──────────────────────────────────
+  // Cette version de l'application est une DÉMONSTRATION : elle ne contacte
+  // aucune base et n'a qu'un seul compte. Le bouton évite d'avoir à inventer
+  // des identifiants pour entrer.
+  const handleDemoLogin = async () => {
+    setLoginError(null);
+    setLoading(true);
+    try {
+      const res = await signInDemoAdmin();
+      onLogin('admin', res.user?.id);
+    } catch {
+      setLoginError("Impossible d'ouvrir la démonstration.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── Create admin account via Supabase auth ────────────────────────────────
@@ -334,6 +351,33 @@ const Login = ({ onLogin }: LoginProps) => {
                     )}
                   </button>
                 </form>
+
+                {/* ── Le compte de démonstration ──────────────────────────────
+                    Une démo ne se garde pas derrière un mot de passe : ce
+                    bouton ouvre l'application sur son jeu de données constant,
+                    en administrateur, sans rien à saisir. */}
+                <div className="flex items-center gap-3 my-5">
+                  <div className="flex-1 h-px bg-slate-100" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
+                    Version de démonstration
+                  </span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDemoLogin}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm uppercase tracking-widest text-white transition-all duration-200 hover:shadow-xl active:scale-[0.98] disabled:opacity-70"
+                  style={{ background: "linear-gradient(135deg, #001f5c 0%, #003087 100%)", boxShadow: "0 4px 16px rgba(0,48,135,0.35)" }}
+                >
+                  <Sparkles className="w-4 h-4 text-[#FFB800]" />
+                  <span>Entrer avec le compte démo</span>
+                </button>
+
+                <p className="text-center text-[11px] text-slate-400 mt-3 font-medium">
+                  Administrateur — aucune base de données, données d'exemple.
+                </p>
 
                 {/* ── Create administrator account (shown only until one exists) ── */}
                 {canCreateAdmin && (

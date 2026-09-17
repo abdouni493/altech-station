@@ -925,17 +925,12 @@ export const MODULES: Record<ModuleKey, ModuleConfig> = {
 
 // Interfaces list shown in the worker "permissions" editor.
 export const MODULE_INTERFACES: { id: string; label: string }[] = [
+  { id: 'pos', label: 'Point de vente' },
+  { id: 'sales', label: 'Ventes' },
   { id: 'stock', label: 'Gestion de stock' },
   { id: 'inventaire', label: 'Inventaire' },
   { id: 'purchases', label: 'Achats' },
-  { id: 'production', label: 'Production' },
-  { id: 'comptoir', label: 'Comptoir' },
-  { id: 'pos', label: 'Point de vente' },
-  { id: 'sales', label: 'Ventes' },
-  { id: 'reparations', label: 'Vidanges & Lavage' },
-  { id: 'encaissements', label: 'Demandes d\'encaissement' },
   { id: 'clients', label: 'Clients' },
-  { id: 'messages', label: 'Messages clients' },
   { id: 'suppliers', label: 'Fournisseurs' },
   { id: 'workers', label: 'Employés' },
   { id: 'expenses', label: 'Dépenses' },

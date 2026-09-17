@@ -23,7 +23,6 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             'vendor-react':    ['react', 'react-dom', 'react-router-dom'],
-            'vendor-supabase': ['@supabase/supabase-js'],
             'vendor-charts':   ['recharts'],
             'vendor-motion':   ['motion'],
             'vendor-i18n':     ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],

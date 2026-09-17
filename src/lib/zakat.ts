@@ -57,8 +57,7 @@ export interface ZakatIncludes {
   caisse: boolean;
   banques: boolean;
   stockCarburant: boolean;
-  stockCafeteria: boolean;
-  stockLavage: boolean;
+  stockMagasin: boolean;
   creances: boolean;
   dettesFournisseurs: boolean;
 }
@@ -108,8 +107,7 @@ export const DEFAULT_ZAKAT_CONFIG: ZakatConfig = {
     caisse: true,
     banques: true,
     stockCarburant: true,
-    stockCafeteria: true,
-    stockLavage: true,
+    stockMagasin: true,
     creances: true,
     dettesFournisseurs: true,
   },
@@ -145,7 +143,7 @@ export interface ZakatInputs {
   caisse: number;
   banques: number;
   /** Valeur du stock par partie, dans les deux valorisations. */
-  stock: { key: 'carburant' | 'cafeteria' | 'lavage'; label: string; emoji: string; buyValue: number; sellValue: number }[];
+  stock: { key: 'carburant' | 'magasin'; label: string; emoji: string; buyValue: number; sellValue: number }[];
   creances: number;
   dettesFournisseurs: number;
 }
@@ -253,7 +251,7 @@ export function computeZakat(inputs: ZakatInputs, cfg: ZakatConfig, now = new Da
   const doubtful = Math.min(100, Math.max(0, num(cfg.doubtfulPct)));
   const creancesNettes = num(inputs.creances) * (1 - doubtful / 100);
 
-  const stockPart = (key: 'carburant' | 'cafeteria' | 'lavage', on: boolean): ZakatComponent => {
+  const stockPart = (key: 'carburant' | 'magasin', on: boolean): ZakatComponent => {
     const s = inputs.stock.find(x => x.key === key);
     const gross = s ? stockValueOf(s) : 0;
     return {
@@ -276,8 +274,7 @@ export function computeZakat(inputs: ZakatInputs, cfg: ZakatConfig, now = new Da
       sign: 1, gross: num(inputs.banques), amount: inc.banques ? num(inputs.banques) : 0, included: inc.banques,
     },
     stockPart('carburant', inc.stockCarburant),
-    stockPart('cafeteria', inc.stockCafeteria),
-    stockPart('lavage', inc.stockLavage),
+    stockPart('magasin', inc.stockMagasin),
     {
       key: 'creances', label: 'Créances clients récupérables',
       hint: doubtful > 0

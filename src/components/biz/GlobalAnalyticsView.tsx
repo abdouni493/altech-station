@@ -25,7 +25,7 @@ import AnalyticsView, { ProductAnalyticsModal } from '@/src/components/biz/Analy
 import { PartAnalytics, ProductAnalytics, Granularity, GRANULARITY_LABEL } from '@/src/lib/bizAnalytics';
 
 const PART_COLOR: Record<string, string> = {
-  carburant: '#003087', cafeteria: '#d97706', lavage: '#0e9f6e', global: '#7c3aed',
+  carburant: '#003087', magasin: '#0e9f6e', global: '#7c3aed',
 };
 const AXIS = { fontSize: 11, fill: '#94a3b8' } as const;
 const shortMoney = (n: number): string => {

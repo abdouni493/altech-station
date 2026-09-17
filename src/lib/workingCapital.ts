@@ -25,7 +25,7 @@
  *
  * ── La TRÉSORERIE, activité par activité ──────────────────────────────────────
  * Les espèces de la station, ce sont les QUATRE TIROIRS de l'écran Caisse
- * Générale : Carburant, Cafétéria, Lavage — chacun reconstitué sur ses propres
+ * Générale : Carburant, Magasin — chacun reconstitué sur ses propres
  * documents — et la Finance, c.-à-d. la part du tiroir commun qui n'appartient à
  * aucune activité. Leur somme est le « Toutes les caisses » de cet écran-là.
  *
@@ -144,7 +144,7 @@ export interface WorkingCapitalReport {
   from: string;
   to: string;
 
-  /** Les quatre tiroirs : Carburant, Cafétéria, Lavage et Finance. */
+  /** Les trois tiroirs : Carburant, Magasin et Finance. */
   cash: WCBlock;
   /** Comptes bancaires, un par ligne. */
   banks: WCBlock;
@@ -157,7 +157,7 @@ export interface WorkingCapitalReport {
 
   /** Toutes les caisses de la station — les trois activités ET la Finance. */
   cashTotal: number;
-  /** Les seules caisses des activités (Carburant + Cafétéria + Lavage). */
+  /** Les seules caisses des activités (Carburant + Magasin). */
   activitiesCash: number;
   /** Le tiroir commun, part qui n'appartient à aucune activité. */
   financeCash: number;
@@ -414,7 +414,7 @@ export function computeWorkingCapital(
 
   const cash = block('cash', 'Caisses (espèces)',
     'Les quatre tiroirs de la station — les mêmes soldes que l\'écran Caisse Générale', cashRows, 1,
-    `${fmt(activitiesCash)} dans les caisses des activités (Carburant, Cafétéria, Lavage) `
+    `${fmt(activitiesCash)} dans les caisses des activités (Carburant, Magasin) `
     + `et ${fmt(financeCash)} dans celle de la Finance, soit ${fmt(activitiesCash + financeCash)} d'espèces. `
     + 'Chaque tiroir est lu sur SES mouvements : ceux de l\'activité pour les trois premiers, les lignes du grand '
     + 'livre sans activité pour la Finance. '

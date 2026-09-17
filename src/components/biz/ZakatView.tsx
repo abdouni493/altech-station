@@ -25,15 +25,14 @@ import {
 
 const COMPONENT_ICON: Record<string, React.ElementType> = {
   caisse: PiggyBank, banques: Landmark, creances: Users, dettes: Truck,
-  'stock-carburant': Boxes, 'stock-cafeteria': Boxes, 'stock-lavage': Boxes,
+  'stock-carburant': Boxes, 'stock-magasin': Boxes,
 };
 
 const INCLUDE_LABEL: { key: keyof ZakatConfig['include']; label: string; hint: string }[] = [
   { key: 'caisse', label: 'Liquidités en caisse', hint: 'Caisse générale et caisses des activités' },
   { key: 'banques', label: 'Comptes bancaires', hint: 'Soldes de tous les comptes' },
   { key: 'stockCarburant', label: 'Stock Carburant', hint: 'Cuves + boutique de la station' },
-  { key: 'stockCafeteria', label: 'Stock Cafétéria', hint: 'Catalogue + comptoir' },
-  { key: 'stockLavage', label: 'Stock Lavage & Vidange', hint: 'Catalogue de la partie' },
+  { key: 'stockMagasin', label: 'Stock Magasin', hint: 'Catalogue de la partie' },
   { key: 'creances', label: 'Créances clients', hint: 'Ventes à crédit récupérables' },
   { key: 'dettesFournisseurs', label: 'Dettes fournisseurs (déduites)', hint: 'Retranchées de l\'assiette' },
 ];

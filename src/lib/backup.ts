@@ -5,7 +5,7 @@
  *  Le bouton « Exporter .JSON » sérialisait l'état React d'`AppContext`. Trois
  *  trous, tous silencieux :
  *
- *    • les parties commerciales (Cafétéria, Lavage) vivent dans un AUTRE magasin
+ *    • la partie commerciale (Magasin) vit dans un AUTRE magasin
  *      (`biz_store`) — produits, ventes, achats, employés, inventaires : RIEN de
  *      tout cela n'était dans le fichier ;
  *    • l'état React ne garde que les 500 dernières lignes de `fuel_sales`,
@@ -118,18 +118,13 @@ export const BACKUP_TABLES: BackupTableSpec[] = [
   { table: 'permission_templates',             label: 'Modèles de permissions' },
   { table: 'activity_log',                     label: 'Journal d\'activité' },
   { table: 'client_feedbacks',                 label: 'Retours clients (page publique /client)' },
-  // Parties commerciales — Cafétéria & Lavage
-  { table: 'biz_sessions',                     label: 'Sessions de caisse (Cafétéria / Lavage)' },
+  // Partie commerciale — Magasin
+  { table: 'biz_sessions',                     label: 'Sessions de caisse (Magasin)' },
   // Le catalogue a sa propre table depuis le 2026-08-15. Le blob en garde une
   // copie, mais c'est CETTE table qui fait autorité au chargement : l'oublier
   // ici sauvegarderait un catalogue périmé sans que rien ne le signale.
-  { table: 'biz_products',                     label: 'Catalogue produits (Cafétéria / Lavage)' },
-  { table: 'biz_store',                        label: 'Données Cafétéria & Lavage (ventes, achats, employés…)' },
-  // Messages WhatsApp aux clients (migration 2026-08-22). Le journal se
-  // sauvegarde ; la file d'attente aussi, parce qu'une restauration faite après
-  // une panne de poste doit rendre les messages qui n'étaient pas encore partis.
-  { table: 'whatsapp_messages',                label: 'Journal des messages WhatsApp' },
-  { table: 'whatsapp_outbox',                  label: 'Messages WhatsApp en attente' },
+  { table: 'biz_products',                     label: 'Catalogue produits (Magasin)' },
+  { table: 'biz_store',                        label: 'Données Magasin (ventes, achats, employés…)' },
 ];
 
 /** Le blob des parties commerciales : restauré par FUSION, jamais en écrasement. */
@@ -398,7 +393,7 @@ async function restoreTable(
 }
 
 /**
- * Remet le contenu Cafétéria / Lavage du fichier DANS l'état actuel.
+ * Remet le contenu Magasin du fichier DANS l'état actuel.
  *
  * Le principe est celui de `mergeBizState`, avec une différence voulue : une
  * ligne du fichier que l'état actuel a oubliée REVIENT, même si une pierre

@@ -1,24 +1,20 @@
 /**
- * ─── SUPABASE CLIENT (live backend) ────────────────────────────────────────────
- * Real Supabase connection for the StationPro app. It keeps the EXACT same public
- * surface the previous offline mock exposed (`supabase`, `db`, `signIn`,
- * `dbInsert`, `subscribeTable`, storage helpers, …), so every page, interface and
- * button in the app talks to the live database and Storage buckets without any
- * other file needing changes.
+ * ─── LA COUCHE DE DONNÉES DE LA DÉMONSTRATION ──────────────────────────────────
  *
- * Project: mgmtggxjlhzsekkrxaus   (see supabase/setup.sql for the schema)
+ * Cette version de l'application ne se connecte à AUCUNE base : tout ce qu'elle
+ * affiche vient des données constantes de `demoSeed.ts`, servies en mémoire par
+ * `demoDb.ts`.
+ *
+ * Le fichier garde EXACTEMENT la surface publique qu'il exposait quand il
+ * parlait à Supabase (`supabase`, `db`, `signIn`, `dbInsert`, `subscribeTable`,
+ * les aides de stockage…), afin qu'aucun écran n'ait à changer : les pages
+ * appellent les mêmes fonctions, elles répondent depuis la RAM.
+ *
+ * Les écritures fonctionnent et se voient à l'écran ; elles vivent le temps de
+ * l'onglet, et un rechargement rend le jeu de démonstration intact.
  * ──────────────────────────────────────────────────────────────────────────────
  */
-import { createClient } from '@supabase/supabase-js';
-
-// Connection — values come from Vite env when present, otherwise fall back to the
-// project this app is wired to. The anon key is public by design (RLS protects data).
-const SUPABASE_URL =
-  (import.meta as any).env?.VITE_SUPABASE_URL ||
-  'https://mgmtggxjlhzsekkrxaus.supabase.co';
-const SUPABASE_ANON_KEY =
-  (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nbXRnZ3hqbGh6c2Vra3J4YXVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5MjI0MjIsImV4cCI6MjEwMDQ5ODQyMn0._SXlyMqNozPIt7Z8jVmKTbYt2caRQ45s3muLTfJbgmk';
+import { demoClient, demoSignIn, demoSignOut, demoSession, DEMO_ADMIN, tableOf } from './demoDb';
 
 export const AUTH_STORAGE_KEY = 'stationpro.auth';
 
@@ -30,337 +26,51 @@ export interface PersistedSession {
 }
 
 /**
- * The session supabase-js keeps in localStorage, read synchronously.
- *
- * `supabase.auth.getSession()` is async and, on a slow or lossy link, can take
- * seconds because it renews the token first. Nothing that only needs to know
- * *whether* somebody is signed in should wait for that — waiting is what used to
- * strand users on the login screen. Authorisation itself is never decided here:
- * every query still goes through supabase-js (fresh token + RLS), and a session
- * that turns out to be dead ends at SIGNED_OUT.
+ * La session de démonstration, telle que la lit `useAuth`. Elle n'est
+ * persistée nulle part : ouvrir l'application, c'est repartir de la page de
+ * connexion, ce qu'on attend d'une démo.
  */
 export function readPersistedSession(): PersistedSession | null {
-  try {
-    const raw = globalThis.localStorage?.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const session = parsed?.currentSession ?? parsed;
-    if (!session?.access_token || !session?.user?.id) return null;
-    return session as PersistedSession;
-  } catch {
-    return null;
-  }
+  const s = demoSession();
+  if (!s) return null;
+  return {
+    access_token: s.access_token,
+    refresh_token: s.refresh_token,
+    user: { id: s.user.id, email: s.user.email },
+  };
 }
-
-// ─── Network resilience layer ───────────────────────────────────────────────────
-/**
- * Some client machines reach Supabase over a resolver / firewall that drops
- * requests intermittently (`net::ERR_NAME_NOT_RESOLVED`) and share a public IP
- * with other stations, which trips Supabase's per-IP rate limiter on
- * `/auth/v1/token` (HTTP 429).
- *
- * Both used to be fatal on those PCs:
- *   • a transient DNS/network blip made a query fail outright;
- *   • a 429 on a token refresh is NOT in auth-js's retryable status list
- *     ([502, 503, 504, 520…530]), so `_callRefreshToken()` fell through to
- *     `_removeSession()` and destroyed the session mid-login — which is exactly
- *     the "impossible to connect from that machine" symptom.
- *
- * `resilientFetch` makes both survivable:
- *   1. concurrent refresh calls collapse into ONE network request (a burst of
- *      refreshes is what trips the limiter in the first place);
- *   2. a rate-limited or transient request is retried with backoff, honouring
- *      `Retry-After`;
- *   3. a refresh that is still rate-limited after the retries is reported as
- *      503 so auth-js classifies it as retryable and KEEPS the session instead
- *      of signing the user out.
- *
- * Retries are deliberately conservative: a request that may already have been
- * applied server-side (POST/PATCH/DELETE that failed mid-flight) is never
- * replayed, so no write is ever duplicated. Only 429s — which the limiter
- * rejects before any processing — are retried for every method.
- */
-/**
- * Budget d'UNE tentative.
- *
- * Il était de 20 s avec trois reprises : une requête vers une base qui ne répond
- * plus coûtait donc 20+1+20+2+20+4+20 ≈ 87 SECONDES avant de rendre la main, et
- * l'hydratation en lance une quarantaine. L'application paraissait morte pendant
- * plusieurs minutes là où elle aurait dû dire « le serveur ne répond pas » tout
- * de suite. Une requête saine revient en moins de 300 ms : huit secondes laissent
- * vingt-cinq fois la marge nécessaire, même sur un lien de station lent.
- *
- * Réduire les reprises AIDE aussi le serveur : réessayer contre une base déjà
- * saturée ne fait qu'ajouter des connexions à une file qui n'avance plus.
- */
-const REQUEST_TIMEOUT_MS = 8_000;
-const MAX_RETRIES = 1;
-/**
- * Un envoi de fichier n'est pas une requête : une photo de bon de livraison sur
- * le lien d'une station met légitimement plus de huit secondes. Lui appliquer le
- * budget des requêtes de données couperait des envois parfaitement sains — et un
- * POST n'est jamais rejoué, il serait donc simplement perdu.
- */
-const UPLOAD_TIMEOUT_MS = 60_000;
-/**
- * L'ÉTAT PARTAGÉ DES PARTIES N'EST PAS UNE REQUÊTE ORDINAIRE.
- *
- * `biz_store` tient tout ce que contiennent la Cafétéria et le Lavage dans UNE
- * ligne JSON : 665 Ko aujourd'hui, dont 567 Ko d'historique de ventes. Elle part
- * en entier à chaque enregistrement. Sur le lien montant d'une station, envoyer
- * 665 Ko demande couramment dix à vingt secondes — le budget de huit secondes
- * abandonnait donc des enregistrements parfaitement sains, et l'écran de la
- * Gestion de stock annonçait « Le serveur refuse les enregistrements —
- * TimeoutError » alors que la base n'avait aucun problème.
- *
- * Ce budget-là ne couvre QUE ces deux points d'entrée, ceux dont on sait que la
- * charge utile est volumineuse. Tout le reste garde huit secondes : une requête
- * de données saine revient en moins de 300 ms, et une base en carafe doit être
- * signalée vite.
- *
- * Ce n'est pas un pansement sur la lenteur : les produits, eux, ont quitté ce
- * blob pour leur propre table (`biz_products`, migration 2026-08-15) et ne
- * dépendent plus du tout de ce budget. Les ventes suivront le même chemin.
- */
-const BULK_STATE_TIMEOUT_MS = 45_000;
-
-const isStorageRequest = (url: string) => url.includes('/storage/v1/');
-/** L'écriture (RPC) et la lecture de la grosse ligne JSON partagée. */
-const isBulkStateRequest = (url: string) =>
-  url.includes('/rest/v1/rpc/biz_store_save') || url.includes('/rest/v1/biz_store');
-// The refresh endpoint retries only once here. Every postgrest call awaits
-// getSession(), so a long backoff chain inside a refresh would stall the whole
-// app; auth-js has its own paced retry loop for the 503 we hand back, and that
-// is the better place to wait.
-const MAX_AUTH_RETRIES = 1;
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-function urlOf(input: RequestInfo | URL): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.toString();
-  return (input as Request)?.url ?? '';
-}
+// ─── Diagnostic du « serveur » ─────────────────────────────────────────────────
+// Il n'y en a pas : la démonstration est toujours disponible.
 
-/** `POST /auth/v1/token?grant_type=refresh_token` — the rate-limited endpoint. */
-function isRefreshTokenRequest(url: string): boolean {
-  return url.includes('/auth/v1/token') && url.includes('grant_type=refresh_token');
-}
-
-/** Backoff delay, preferring the server's `Retry-After` when it sends one. */
-function retryDelayMs(attempt: number, res?: Response): number {
-  const retryAfter = res?.headers?.get('retry-after');
-  if (retryAfter) {
-    const secs = Number(retryAfter);
-    if (Number.isFinite(secs) && secs > 0) return Math.min(secs * 1000, 30_000);
-  }
-  // 1s → 2s → 4s, plus jitter so several tabs don't retry in lockstep.
-  return Math.min(1000 * 2 ** attempt, 8000) + Math.floor(Math.random() * 400);
-}
-
-async function fetchWithRetry(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  maxRetries: number = MAX_RETRIES,
-): Promise<Response> {
-  const method = (init?.method ?? 'GET').toUpperCase();
-  // Only replay requests that cannot have taken effect server-side.
-  const replayable = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-  const callerSignal = init?.signal ?? undefined;
-  const url = urlOf(input);
-  const budget = isStorageRequest(url) ? UPLOAD_TIMEOUT_MS
-    : isBulkStateRequest(url) ? BULK_STATE_TIMEOUT_MS
-      : REQUEST_TIMEOUT_MS;
-
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Per-attempt timeout — a request that never settles must not wedge the app.
-    // The abort carries a NAMED reason: without it the console fills with
-    // "AbortError: signal is aborted without reason", which reads like a bug in
-    // the app when it is simply the request budget doing its job.
-    const controller = new AbortController();
-    const onCallerAbort = () => controller.abort(callerSignal?.reason);
-    const timer = setTimeout(
-      () => controller.abort(new DOMException(`Le serveur n'a pas répondu en ${Math.round(budget / 1000)} s`, 'TimeoutError')),
-      budget,
-    );
-    callerSignal?.addEventListener('abort', onCallerAbort);
-
-    try {
-      const res = await fetch(input, { ...init, signal: controller.signal });
-
-      // 429: rejected by the rate limiter before any processing → always safe to retry.
-      // 5xx: may have been applied → replay only idempotent methods.
-      const retryable = res.status === 429 || (replayable && res.status >= 500);
-      if (retryable && attempt < maxRetries) {
-        await sleep(retryDelayMs(attempt, res));
-        continue;
-      }
-      return res;
-    } catch (err) {
-      lastError = err;
-      // The caller aborted on purpose (component unmounted, request superseded).
-      if (callerSignal?.aborted) throw err;
-      if (!replayable || attempt >= maxRetries) throw err;
-      await sleep(retryDelayMs(attempt));
-    } finally {
-      clearTimeout(timer);
-      callerSignal?.removeEventListener('abort', onCallerAbort);
-    }
-  }
-
-  throw lastError;
-}
-
-/** In-flight refresh, shared by every caller so a burst becomes one request. */
-let refreshInFlight: Promise<Response> | null = null;
-
-async function resilientFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const url = urlOf(input);
-
-  if (!isRefreshTokenRequest(url)) return fetchWithRetry(input, init);
-
-  if (!refreshInFlight) {
-    refreshInFlight = fetchWithRetry(input, init, MAX_AUTH_RETRIES)
-      .finally(() => { refreshInFlight = null; });
-  }
-
-  // Every caller — including the first — reads a clone, so the shared response
-  // body is never consumed and can be cloned again by the next waiter.
-  const shared = await refreshInFlight;
-
-  if (shared.status === 429) {
-    // Still rate limited. Surfacing the 429 would make auth-js drop the session;
-    // 503 is in its retryable list, so the session survives and it retries later.
-    const body = await shared.clone().text().catch(() => '');
-    console.warn('[auth] Rafraîchissement du jeton limité (429) — session conservée, nouvel essai plus tard.');
-    return new Response(
-      body || JSON.stringify({ error: 'rate_limited', error_description: 'Too many refresh attempts' }),
-      { status: 503, statusText: 'Rate limited', headers: new Headers(shared.headers) },
-    );
-  }
-
-  return shared.clone();
-}
-
-// ─── Diagnostic : QUELLE couche est en panne ? ─────────────────────────────────
-/**
- * `ok` — tout répond.
- * `database` — le serveur Supabase répond, mais les requêtes de DONNÉES non : la
- *   base est saturée, redémarre, ou son pool de connexions est épuisé. Le poste
- *   et Internet n'y sont pour RIEN.
- * `offline` — le serveur n'est pas joignable du tout : là, c'est bien le réseau.
- *
- * Cette distinction n'est pas cosmétique. « Vérifiez la connexion Internet »
- * affiché alors que le lien est parfait envoie l'utilisateur débrancher sa box
- * pendant des heures pour un problème qui est côté serveur.
- */
 export type BackendStatus = 'ok' | 'database' | 'offline';
 
-/** `fetch` NU : ni reprise ni file d'attente — un diagnostic doit être rapide. */
-async function rawFetch(url: string, ms: number, headers?: Record<string, string>): Promise<Response | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new DOMException(`Diagnostic sans réponse en ${ms} ms`, 'TimeoutError')), ms);
-  try {
-    return await fetch(url, { signal: controller.signal, headers });
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export async function probeBackend(): Promise<BackendStatus> {
-  // 1. Une vraie requête de données, courte : c'est elle qui compte.
-  const data = await rawFetch(
-    `${SUPABASE_URL}/rest/v1/station_settings?select=id&limit=1`, 6_000,
-    { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-  );
-  if (data && data.status < 500) return 'ok';
-
-  // 2. Pas de données. La passerelle répond-elle quand même ? Sans clé elle rend
-  //    un 401 immédiat SANS toucher à la base — c'est le test qui sépare
-  //    « réseau coupé » de « base en carafe ».
-  const gateway = await rawFetch(`${SUPABASE_URL}/rest/v1/`, 5_000);
-  return gateway ? 'database' : 'offline';
+  return 'ok';
 }
 
-/** Message prêt à afficher pour chaque état — même vocabulaire partout. */
 export const BACKEND_STATUS_MESSAGE: Record<Exclude<BackendStatus, 'ok'>, string> = {
-  database:
-    "Le serveur de données ne répond pas (base saturée ou en redémarrage). "
-    + "Votre connexion Internet fonctionne : il n'y a rien à faire sur ce poste, "
-    + "réessayez dans quelques minutes.",
-  offline:
-    "Serveur injoignable depuis ce poste. Vérifiez la connexion Internet, puis réessayez.",
+  database: "Les données de démonstration ne sont pas disponibles.",
+  offline: "Les données de démonstration ne sont pas disponibles.",
 };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    // No OAuth / magic-link redirect flow in this app — skip the URL parsing.
-    detectSessionInUrl: false,
-    storageKey: AUTH_STORAGE_KEY,
-  },
-  global: { fetch: resilientFetch },
-  realtime: {
-    // Backoff ladder for the websocket. The default tops out at 10 s, which on a
-    // machine whose DNS/firewall blocks `wss://` produced an endless stream of
-    // ERR_NAME_NOT_RESOLVED in the console. Capped at 2 min instead: the app
-    // still heals itself when the network returns, without flooding the log.
-    reconnectAfterMs: (tries: number) => {
-      const ladder = [1_000, 2_000, 5_000, 10_000, 30_000, 60_000, 120_000];
-      return ladder[Math.min(Math.max(tries, 1), ladder.length) - 1];
-    },
-    heartbeatIntervalMs: 30_000,
-    timeout: 20_000,
-  },
-});
+/** Le client : même API que `supabase-js`, servie depuis la mémoire. */
+export const supabase = demoClient as any;
 
-// ─── Realtime health ────────────────────────────────────────────────────────────
-/**
- * Live updates are a nice-to-have: on networks that block websockets the app must
- * still work, just without push. Channels report their subscribe status here; once
- * enough of them fail the app switches to periodic polling (see AppContext) and
- * tells the user once, instead of silently showing stale data.
- */
+// ─── Santé du temps réel ───────────────────────────────────────────────────────
+// Sans serveur, il n'y a rien à surveiller : l'état reste « en ligne ».
+
 export type RealtimeHealth = 'connecting' | 'online' | 'offline';
 
-const REALTIME_FAILURE_THRESHOLD = 3;
-
-let realtimeHealth: RealtimeHealth = 'connecting';
-let realtimeFailures = 0;
-const realtimeListeners = new Set<(health: RealtimeHealth) => void>();
-
 export function getRealtimeHealth(): RealtimeHealth {
-  return realtimeHealth;
+  return 'online';
 }
 
-/** Subscribes to health changes; fires immediately with the current value. */
 export function onRealtimeHealthChange(cb: (health: RealtimeHealth) => void): () => void {
-  realtimeListeners.add(cb);
-  cb(realtimeHealth);
-  return () => { realtimeListeners.delete(cb); };
-}
-
-function setRealtimeHealth(next: RealtimeHealth) {
-  if (next === realtimeHealth) return;
-  realtimeHealth = next;
-  realtimeListeners.forEach(l => { try { l(next); } catch { /* listener errors are not ours */ } });
-}
-
-function reportRealtimeStatus(status: string) {
-  if (status === 'SUBSCRIBED') {
-    realtimeFailures = 0;
-    setRealtimeHealth('online');
-    return;
-  }
-  if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-    realtimeFailures += 1;
-    if (realtimeFailures >= REALTIME_FAILURE_THRESHOLD) setRealtimeHealth('offline');
-  }
+  cb('online');
+  return () => {};
 }
 
 // ─── Storage bucket names (unchanged public API) ────────────────────────────────
@@ -444,114 +154,56 @@ export async function uploadBase64(
   }
 }
 
-// ─── Auth helpers (public API) ──────────────────────────────────────────────────
+// ─── Auth helpers (démonstration) ──────────────────────────────────────────────
+//
+// Un seul compte existe : l'administrateur de démonstration. N'importe quel
+// identifiant et n'importe quel mot de passe l'ouvrent — c'est une démo, pas un
+// contrôle d'accès — et le bouton « Compte démo » de la page de connexion fait
+// la même chose en un clic.
 
-const DEMO_EMAIL = 'admin@stationpro.dz';
-const DEMO_PASSWORD = 'stationpro';
-
-/**
- * Rôle du compte qui vient de se connecter. La page de connexion REFUSE l'accès
- * quand il vaut null : un échec passager du réseau juste après un mot de passe
- * accepté ne doit donc pas se déguiser en « aucun rôle » — d'où le second essai.
- */
-async function resolveRole(): Promise<string | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const { data, error } = await supabase.rpc('get_my_role');
-      if (!error) return (data as string | null) ?? null;
-    } catch { /* réseau — retenté ci-dessous */ }
-    if (attempt === 0) await sleep(600);
-  }
-  return null;
-}
+export const DEMO_ACCOUNT = DEMO_ADMIN;
 
 /** Why a sign-in failed — the login page shows a different message per reason. */
 export type SignInFailure = 'credentials' | 'rate_limited' | 'network';
 
-/**
- * Sign in with an email OR a username (+ password). Returns the resolved role so
- * the login page can route the user; returns `{ error, reason }` on failure.
- *
- * `reason` matters: a rate-limited or unreachable server used to be reported as
- * "identifiants invalides", which sent people hunting for a password problem
- * that did not exist.
- */
-export async function signIn(identifier: string, password: string) {
-  let email = (identifier || '').trim();
-
-  // Allow login by username: resolve it to the account email.
-  if (email && !email.includes('@')) {
-    try {
-      const { data } = await supabase.rpc('email_for_username', { p_username: email.toLowerCase() });
-      if (data) email = data as string;
-    } catch { /* fall through — will fail auth below */ }
-  }
-
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    const status = (error as any)?.status as number | undefined;
-    const reason: SignInFailure =
-      status === 429 ? 'rate_limited'
-      : (!status || status === 0 || status >= 500) ? 'network'
-      : 'credentials';
-    return { error: error.message, reason };
-  }
-
-  const role = await resolveRole();
-  return { user: data.user, session: data.session, role, profile: null };
+export async function signIn(_identifier: string, _password: string): Promise<{
+  user?: any; session?: any; role?: string | null; profile?: any;
+  error?: string; reason?: SignInFailure;
+}> {
+  const session = demoSignIn();
+  return { user: session.user, session, role: 'admin', profile: null };
 }
 
-/** One-click demo administrator login (only works if that account exists). */
+/** One-click demo administrator login. */
 export async function signInDemoAdmin() {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: DEMO_EMAIL,
-    password: DEMO_PASSWORD,
-  });
-  if (error) throw new Error(error.message);
-  const role = (await resolveRole()) ?? 'admin';
-  return { user: data.user, session: data.session, role: role as 'admin' };
+  const session = demoSignIn();
+  return { user: session.user, session, role: 'admin' as const };
 }
 
-/**
- * Create the FIRST administrator account (from the login page's signup form).
- * Uses a SECURITY DEFINER RPC that provisions a confirmed auth user + profile, so
- * the new admin can log in immediately (no email-confirmation step).
- */
-export async function signUpAdmin(params: {
+/** La démonstration part avec son administrateur : rien à créer. */
+export async function signUpAdmin(_params: {
   name: string; username: string; email: string; password: string;
 }): Promise<{ user: any; session: any } | { error: string }> {
-  const { data, error } = await supabase.rpc('create_admin_account', {
-    p_name: params.name,
-    p_username: params.username,
-    p_email: params.email,
-    p_password: params.password,
-  });
-  if (error) return { error: error.message };
-  if (data && (data as any).ok === false) return { error: (data as any).error || 'Échec de la création' };
-  return { user: null, session: null };
+  return { error: "La version de démonstration ne crée pas de compte : utilisez le bouton « Compte démo »." };
 }
 
-/** True when at least one administrator already exists (hides the signup button). */
+/** Un administrateur existe toujours : le formulaire d'inscription reste caché. */
 export async function adminExists(): Promise<boolean> {
-  try {
-    const { data, error } = await supabase.rpc('admin_exists');
-    if (error) return false;
-    return !!data;
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 export async function signOut() {
-  await supabase.auth.signOut();
+  demoSignOut();
 }
 
 export async function getSession() {
-  const { data } = await supabase.auth.getSession();
-  return data.session;
+  return demoSession();
 }
 
-// ─── Worker account provisioning ────────────────────────────────────────────────
+// ─── Comptes de connexion des employés ─────────────────────────────────────────
+// La démonstration n'a pas de fournisseur d'identité : ces appels réussissent
+// sans rien provisionner, pour que les écrans d'employés restent utilisables.
+
 export type WorkerType = 'pompiste' | 'chef_brigade' | 'gerant' | 'magasin';
 
 export async function provisionWorkerAccount(input: {
@@ -563,29 +215,9 @@ export async function provisionWorkerAccount(input: {
   name?: string;
   email?: string;
 }): Promise<{ ok: true; auth_user_id?: string } | { ok: false; error: string }> {
-  try {
-    const { data, error } = await supabase.rpc('provision_worker_account', {
-      p_action:      input.action,
-      p_worker_type: input.workerType,
-      p_worker_id:   input.workerId,
-      p_username:    input.username ?? null,
-      p_password:    input.password ?? null,
-      p_name:        input.name ?? null,
-      p_email:       input.email ?? null,
-    });
-    if (error) return { ok: false, error: error.message };
-    if (data && (data as any).ok) {
-      return { ok: true, auth_user_id: (data as any).auth_user_id };
-    }
-    return { ok: false, error: (data as any)?.error || 'Erreur inconnue' };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Erreur réseau' };
-  }
+  if (input.action === 'delete') return { ok: true };
+  return { ok: true, auth_user_id: `demo-auth-${input.workerId}` };
 }
-
-// ─── Business-part worker accounts (Restaurant / Cafétéria / Lavage / Magasin) ──
-// These employees live in the BizContext store, so they need their own auth
-// provisioning path (see supabase/migrations/module_workers_auth.sql).
 
 export type BizModuleKey = 'magasin';
 
@@ -614,60 +246,21 @@ export async function provisionModuleWorkerAccount(input: {
   phone?: string;
   permissions?: Record<string, boolean>;
 }): Promise<{ ok: boolean; auth_user_id?: string; error?: string }> {
-  try {
-    const { data, error } = await supabase.rpc('provision_module_worker_account', {
-      p_action:      input.action,
-      p_module_key:  input.moduleKey,
-      p_worker_id:   input.workerId,
-      p_username:    input.username ?? null,
-      p_password:    input.password ?? null,
-      p_name:        input.name ?? null,
-      p_email:       input.email ?? null,
-      p_role_name:   input.roleName ?? null,
-      p_phone:       input.phone ?? null,
-      p_permissions: input.permissions ?? {},
-    });
-    if (error) {
-      // The RPC is missing until the migration is run — surface a clear message.
-      const hint = /function .* does not exist|schema cache/i.test(error.message)
-        ? "Migration manquante : exécutez supabase/migrations/module_workers_auth.sql dans Supabase → SQL Editor."
-        : error.message;
-      return { ok: false, error: hint };
-    }
-    if (data && (data as any).ok) return { ok: true, auth_user_id: (data as any).auth_user_id };
-    return { ok: false, error: (data as any)?.error || 'Erreur inconnue' };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Erreur réseau' };
-  }
+  if (input.action === 'delete') return { ok: true };
+  return { ok: true, auth_user_id: `demo-auth-${input.workerId}` };
 }
 
-/** Persists a part-employee's permissions server-side (so they apply at login). */
+/** Les permissions vivent déjà dans l'état du Magasin : rien à envoyer. */
 export async function saveModuleWorkerPermissions(
-  workerId: string,
-  permissions: Record<string, boolean>,
+  _workerId: string,
+  _permissions: Record<string, boolean>,
 ): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const { data, error } = await supabase.rpc('save_module_worker_permissions', {
-      p_worker_id: workerId,
-      p_permissions: permissions,
-    });
-    if (error) return { ok: false, error: error.message };
-    if (data && (data as any).ok === false) return { ok: false, error: (data as any).error };
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Erreur réseau' };
-  }
+  return { ok: true };
 }
 
-/** Resolves the connected part-employee (module_key + permissions), or null. */
+/** La démonstration se connecte toujours en administrateur. */
 export async function getMyModuleWorker(): Promise<ModuleWorkerRow | null> {
-  try {
-    const { data, error } = await supabase.rpc('get_my_module_worker');
-    if (error || !data) return null;
-    return data as ModuleWorkerRow;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 // ─── Shared business-parts state (single JSON row) ──────────────────────────────
@@ -1310,7 +903,7 @@ export function subscribeTable(
     )
     // The status feeds the health tracker above: when the websocket cannot be
     // reached at all, the app falls back to polling instead of going stale.
-    .subscribe((status: string) => reportRealtimeStatus(status));
+    .subscribe();
 
   return () => { supabase.removeChannel(channel); };
 }
