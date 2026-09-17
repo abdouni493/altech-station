@@ -1,5 +1,5 @@
 /**
- * ─── Retours clients d'une partie commerciale (Cafétéria / Lavage) ─────────────
+ * ─── Retours clients de la partie Magasin ─────────────────────────────────────
  * Même écran que celui de la partie Carburant, filtré sur les avis déposés pour
  * CETTE partie. Les droits viennent de l'interface `feedbacks` de l'employé.
  * ──────────────────────────────────────────────────────────────────────────────

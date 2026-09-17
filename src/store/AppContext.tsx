@@ -16,6 +16,7 @@ import {
 } from '../lib/supabase';
 import type { RealtimeHealth } from '../lib/supabase';
 import { newId, degreesFromLiters } from '../lib/utils';
+import type { ModuleKey } from '../lib/bizConfig';
 
 // ─── Null-or-zero sanitizer ────────────────────────────────────────────────────
 // Converts empty-string or undefined to null so optional UUID / date FK columns
@@ -617,15 +618,14 @@ export const CAISSE_ID = 'CAISSE' as const;
 
 /**
  * Pseudo-account id of the cash box of ONE activity of the station. Money can
- * be moved from the caisse of a part (Carburant, Cafétéria, Lavage) to a bank
+ * be moved from the caisse of a part (Carburant, Magasin) to a bank
  * account or to another caisse exactly like from the caisse générale: the
  * movement is a single `TRANSFER` line whose `accountFrom` / `accountTo` hold
  * these ids, so both sides can never disagree.
  */
 export const CAISSE_PART_ID = {
   carburant: 'CAISSE_CARBURANT',
-  cafeteria: 'CAISSE_CAFETERIA',
-  lavage: 'CAISSE_LAVAGE',
+  magasin: 'CAISSE_MAGASIN',
 } as const;
 
 /** Every cash box of the station, general one included. */
@@ -635,8 +635,7 @@ export const CASH_ACCOUNT_IDS: string[] = [CAISSE_ID, ...Object.values(CAISSE_PA
 export const CASH_ACCOUNT_LABEL: Record<string, string> = {
   [CAISSE_ID]: 'Caisse générale',
   [CAISSE_PART_ID.carburant]: 'Caisse Carburant',
-  [CAISSE_PART_ID.cafeteria]: 'Caisse Cafétéria',
-  [CAISSE_PART_ID.lavage]: 'Caisse Lavage & Vidange',
+  [CAISSE_PART_ID.magasin]: 'Caisse Magasin',
 };
 
 /** `true` when the id designates a cash box rather than a bank account. */
@@ -667,17 +666,17 @@ export type TreasuryKind =
   | 'PURCHASE' | 'SALE' | 'EXPENSE' | 'BRIGADE' | 'TPE' | 'SALARY' | 'ADJUST';
 
 /** Which activity of the station the movement belongs to. */
-export type TreasuryPart = 'carburant' | 'cafeteria' | 'lavage' | 'systeme';
+export type TreasuryPart = 'carburant' | 'magasin' | 'systeme';
 
 /** Les activités qui tiennent leur PROPRE caisse — la Finance tient la générale. */
-export const TREASURY_PARTS: TreasuryPart[] = ['carburant', 'cafeteria', 'lavage', 'systeme'];
+export const TREASURY_PARTS: TreasuryPart[] = ['carburant', 'magasin', 'systeme'];
 
 /**
  * La caisse d'où sortent les ESPÈCES d'une activité : son propre coffre, et la
  * caisse générale seulement pour la Finance.
  *
  * C'est la règle qui manquait aux dépenses : payée en espèces, une dépense de
- * la Cafétéria vidait la caisse GÉNÉRALE — l'activité qui la supportait, elle,
+ * du Magasin vidait la caisse GÉNÉRALE — l'activité qui la supportait, elle,
  * gardait un tiroir plein d'un argent déjà dépensé.
  */
 export const cashAccountOfPart = (part?: TreasuryPart): string =>
@@ -1082,14 +1081,14 @@ export interface UserPermissions {
 }
 
 /** Every role the app can be signed in as. `module_worker` is an employee of one
- *  of the business parts (Restaurant / Cafétéria / Lavage / Magasin). */
+ *  of the Magasin part. */
 export type AppUserRole =
   | 'admin' | 'pompiste' | 'chef_brigade' | 'gerant' | 'magasin' | 'module_worker';
 
 /** Connected employee of a business part, resolved at login from Supabase. */
 export interface ModuleWorkerSession {
   id: string;
-  moduleKey: 'cafeteria' | 'lavage';
+  moduleKey: ModuleKey;
   name: string;
   roleName?: string;
   /** Flat map keyed `"<interface>.<action>"`, e.g. `"stock.voir"`. */

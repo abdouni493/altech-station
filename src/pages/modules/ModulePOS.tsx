@@ -61,7 +61,7 @@ import { useCustomerDisplay, CustomerDisplayState } from '@/src/components/biz/C
 import { ContactModal, printInvoice, AskPrintModal, stationFromSettings } from './_shared';
 import BarcodeScannerModal from '@/src/components/BarcodeScannerModal';
 
-type LineKind = 'comptoir' | 'product' | 'fiche';
+type LineKind = 'product';
 
 interface CartLine {
   id: string;
@@ -135,7 +135,7 @@ export default function ModulePOS({ moduleKey }: { moduleKey: ModuleKey }) {
   const biz = useBiz(moduleKey);
   const perm = useBizPermission(moduleKey, 'pos');
   const { settings, currentUserName, currentModuleWorker, currentUserRole } = useAppState();
-  const { comptoir, products, clients, fiches, workers } = biz.state;
+  const { products, clients, workers } = biz.state;
   const pinned = biz.state.posPinned || [];
 
   // Seul l'administrateur voit le théorique de la session (total vendu, espèces
@@ -147,10 +147,10 @@ export default function ModulePOS({ moduleKey }: { moduleKey: ModuleKey }) {
   const { mySession, otherOpen } = useBizSessions(moduleKey);
 
   /**
-   * Pièces détachées : seule la partie Lavage & Vidange en vend, et donc
-   * seule elle cherche par référence ou par véhicule.
+   * Pièces détachées : le Magasin en vend, et cherche donc aussi par
+   * référence ou par véhicule compatible.
    */
-  const isLavage = moduleKey === 'lavage';
+  const isLavage = true;
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
@@ -187,26 +187,6 @@ export default function ModulePOS({ moduleKey }: { moduleKey: ModuleKey }) {
   const source = useMemo<Source[]>(() => {
     const out: Source[] = [];
 
-    // Productions already sent to the comptoir. A line stays on the grid while
-    // it holds something AND while it is in the red: une production vendue à
-    // découvert doit rester vendable (et visible en négatif) jusqu'à ce que la
-    // fabrication suivante la remette à flot. Seule une ligne pile à zéro s'en
-    // va — elle a été écoulée proprement.
-    if (cfg.hasComptoir) {
-      comptoir.filter(c => c.qty !== 0).forEach(c => {
-        const matchingProd = products.find(p => p.name === c.productName);
-        const matchingFiche = fiches.find(f => f.name === c.productName);
-        out.push({
-          id: c.id, name: c.productName, price: c.unitPrice, avail: c.qty,
-          unit: c.unit, kind: 'comptoir', categoryName: c.categoryName,
-          // Coût de revient sorti de la production qui a alimenté le comptoir.
-          unitCost: c.purchasePrice || matchingFiche?.costPerUnit || 0,
-          imageUrl: matchingProd?.imageUrl || matchingFiche?.imageUrl,
-          pinKey: posPinKey('comptoir', c.productName),
-        });
-      });
-    }
-
     // Stock products — including the ones sold au détail. Products are listed
     // even at 0 or negative stock: the POS may oversell them (stock goes minus)
     // and a later purchase settles the shortfall (e.g. −5 stock + 15 reçus = 10).
@@ -242,22 +222,8 @@ export default function ModulePOS({ moduleKey }: { moduleKey: ModuleKey }) {
       }
     });
 
-    // Quick-sale fiches (no production run needed). Une fiche reste au comptoir
-    // même quand ses ingrédients sont épuisés : elle se vend à découvert et ce
-    // sont les ingrédients qui passent en négatif dans la Gestion de stock.
-    fiches.filter(f => f.directSale).forEach(f => out.push({
-      id: f.id, name: f.name, price: f.unitPrice,
-      avail: maxFicheServings(f, products), unit: f.sellUnit || 'unité',
-      kind: 'fiche', categoryName: f.categoryName, fiche: f,
-      // Coût des ingrédients d'UNE part, déduits du stock à la vente.
-      unitCost: f.costPerUnit || 0,
-      imageUrl: f.imageUrl,
-      pinKey: posPinKey('fiche', f.id),
-      missing: missingIngredients(f, products),
-    }));
-
     return out;
-  }, [cfg.hasComptoir, comptoir, products, fiches]);
+  }, [products]);
 
   // ── Accès rapide ──────────────────────────────────────────────────────────
   // Pinned tiles come first, in the order the user arranged them; everything
@@ -471,23 +437,7 @@ export default function ModulePOS({ moduleKey }: { moduleKey: ModuleKey }) {
       draw.set(productId, (draw.get(productId) || 0) + qty);
 
     lines.forEach(l => {
-      if (l.kind === 'comptoir') {
-        const c = comptoir.find(x => x.id === l.id);
-        if (c) biz.update('comptoir', { ...c, qty: roundQty(c.qty - l.qty) });
-      } else if (l.kind === 'fiche') {
-        // A direct-sale fiche behaves like an instant production: its ingredients
-        // leave the stock right away — and may drive it negative, settled later
-        // by a purchase. Il manque de la matière ? La vente passe quand même.
-        const f = fiches.find(x => x.id === l.id);
-        f?.ingredients.forEach(ing => {
-          // Un ingrédient « semi-fini » n'est pas une ligne de stock : il n'y a
-          // rien à décrémenter pour lui.
-          if (ing.sourceType === 'fiche') return;
-          take(ing.productId, ing.quantityUsed * l.qty / Math.max(1, f.outputQuantity));
-        });
-      } else {
-        take(l.id, l.detailCapacity ? l.qty / l.detailCapacity : l.qty);
-      }
+      take(l.id, l.detailCapacity ? l.qty / l.detailCapacity : l.qty);
     });
 
     draw.forEach((consumed, productId) => {

@@ -46,7 +46,7 @@ export const CASH_ACCOUNT_LABEL: Record<string, string> = {
 
 const isCashAccount = (id?: string): boolean => !!id && CASH_ACCOUNT_IDS.includes(id);
 
-export type TreasuryPartKey = 'carburant' | 'cafeteria' | 'lavage' | 'systeme';
+export type TreasuryPartKey = 'carburant' | 'magasin' | 'systeme';
 
 /**
  * À QUI appartient l'argent DÉJÀ sur un compte bancaire le jour de sa création.
@@ -79,7 +79,7 @@ export const ORIGIN_LABEL: Record<string, string> = {
 };
 
 export const TREASURY_PART_LABEL: Record<TreasuryPartKey, string> = {
-  carburant: 'Carburant', cafeteria: 'Cafétéria', lavage: 'Lavage & Vidange', systeme: 'Finance',
+  carburant: 'Carburant', magasin: 'Magasin', systeme: 'Finance',
 };
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
@@ -551,11 +551,6 @@ export function computeTreasuryReport(app: any, biz: BizState, from: string, to:
         + (s.status === 'retournée' ? ' (retournée)' : s.status === 'échangée' ? ' (échangée)' : ''),
       amount: l.amount,
     })));
-    (m.reparations || []).forEach(r => docPaymentSlices(r, num(r.paid)).forEach(l => push({
-      id: `${key}-rep-${l.id}`, date: l.date, nature: 'Vente', part, isLedger: false,
-      label: `${r.kind === 'lavage' ? 'Lavage' : r.kind === 'reparation' ? 'Vidange' : 'Lavage + Vidange'} ${r.ref} — ${r.clientName}`,
-      amount: l.amount,
-    })));
     (m.purchases || []).forEach(p => push({
       id: `${key}-pur-${p.id}`, date: p.date, nature: 'Achat', part, isLedger: false,
       label: `Achat ${p.ref} — ${p.supplierName}`, amount: -num(p.paid),
@@ -635,8 +630,7 @@ export function computeTreasuryReport(app: any, biz: BizState, from: string, to:
 
   const partBalances: TreasuryPartBalance[] = [
     { key: 'carburant', label: TREASURY_PART_LABEL.carburant, balance: carburantBalance, ...flowsOf('carburant') },
-    { key: 'cafeteria', label: TREASURY_PART_LABEL.cafeteria, balance: partBalance('cafeteria'), ...flowsOf('cafeteria') },
-    { key: 'lavage', label: TREASURY_PART_LABEL.lavage, balance: partBalance('lavage'), ...flowsOf('lavage') },
+    { key: 'magasin', label: TREASURY_PART_LABEL.magasin, balance: partBalance('magasin'), ...flowsOf('magasin') },
     { key: 'systeme', label: TREASURY_PART_LABEL.systeme, balance: caisseBalance + bankTotal, ...flowsOf('systeme') },
   ];
 

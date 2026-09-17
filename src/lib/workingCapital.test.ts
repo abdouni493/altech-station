@@ -47,11 +47,11 @@ const FROM = '2026-08-01', TO = '2026-08-31';
 
 // ─── Une station complète : trois activités, un compte, un grand livre ───────
 const biz: BizState = emptyBizState();
-biz.cafeteria.caisse.push(
+biz.magasin.caisse.push(
   { id: 'c1', date: '2026-08-04T10:00:00.000Z', type: 'deposit', amount: 4000, description: 'Recette du jour' } as any,
   { id: 'c2', date: '2026-08-09T10:00:00.000Z', type: 'withdraw', amount: 1500, description: 'Retrait' } as any,
 );
-biz.lavage.caisse.push(
+biz.magasin.caisse.push(
   { id: 'l1', date: '2026-07-15T10:00:00.000Z', type: 'deposit', amount: 900, description: 'Avant la période' } as any,
 );
 
@@ -68,8 +68,8 @@ const app = {
     // Un achat de carburant réglé PAR LA BANQUE : la station a payé pour le
     // Carburant, sa part du compte en est diminuée d'autant.
     { id: 't7', date: '2026-08-12T10:00:00.000Z', kind: 'PURCHASE', amount: 400, accountFrom: 'B1', part: 'carburant', refType: 'purchase', refId: 'p2' },
-    // La Cafétéria dépose une recette en banque : cette part-là est à elle.
-    { id: 't8', date: '2026-08-14T10:00:00.000Z', kind: 'DEPOSIT', amount: 700, accountTo: 'B1', part: 'cafeteria' },
+    // Le Magasin dépose une recette en banque : cette part-là est à lui.
+    { id: 't8', date: '2026-08-14T10:00:00.000Z', kind: 'DEPOSIT', amount: 700, accountTo: 'B1', part: 'magasin' },
     // APRÈS la période — dans le solde, hors des flux.
     { id: 't6', date: '2026-09-10T10:00:00.000Z', kind: 'WITHDRAW', amount: 300, accountFrom: CAISSE_ID, part: 'systeme' },
   ],
@@ -85,23 +85,20 @@ const app = {
 const treasury = computeTreasuryReport(app, biz, FROM, TO);
 const parts: PartReport[] = [
   computeCarburantReport(app, FROM, TO),
-  computeModuleReport(biz.cafeteria, 'cafeteria', FROM, TO, app.treasuryTransactions, app.expenses),
-  computeModuleReport(biz.lavage, 'lavage', FROM, TO, app.treasuryTransactions, app.expenses),
+  computeModuleReport(biz.magasin, 'magasin', FROM, TO, app.treasuryTransactions, app.expenses),
 ];
 const r = computeWorkingCapital(treasury, parts);
 
 // ─── La trésorerie, ce sont les caisses des activités ET la Finance ──────────
 console.log('\nLes caisses comptées sont celles de la Caisse Générale');
 const carburantCash = computeCarburantCash(app).balance;      // 5000 − 8000 − 1000
-const cafeteriaCash = moduleCaisseBalance(biz.cafeteria, 'cafeteria', app.treasuryTransactions, app.expenses);
-const lavageCash = moduleCaisseBalance(biz.lavage, 'lavage', app.treasuryTransactions, app.expenses);
+const magasinCash = moduleCaisseBalance(biz.magasin, 'magasin', app.treasuryTransactions, app.expenses);
 check('caisse Carburant', carburantCash, -4000);
-check('caisse Cafétéria', cafeteriaCash, 2500);
-check('caisse Lavage', lavageCash, 900);
+check('caisse Magasin', magasinCash, 3400);
 // Le tiroir de la Finance : les seules lignes du grand livre sans activité.
 check('caisse Finance (2000 déposés − 300 retirés)', r.financeCash, 1700);
-check('caisses des activités', r.activitiesCash, carburantCash + cafeteriaCash + lavageCash);
-check('toutes les caisses', r.cashTotal, carburantCash + cafeteriaCash + lavageCash + 1700);
+check('caisses des activités', r.activitiesCash, carburantCash + magasinCash);
+check('toutes les caisses', r.cashTotal, carburantCash + magasinCash + 1700);
 
 console.log('\nLe tiroir COMMUN n\'est pas ce que la station détient');
 // 2000 + 5000 − 8000 − 300 : il ignore les 1000 virés depuis le coffre du
@@ -132,8 +129,7 @@ check('solde du compte', b1.balance, 2300);
 // affichait 600 en banque quand la station en avait 2300.
 check('part Carburant (1000 d\'ouverture + 1000 versés − 400 réglés)',
   b1.parts.find(p => p.key === 'carburant')?.balance, 1600);
-check('part Cafétéria (700 déposés)', b1.parts.find(p => p.key === 'cafeteria')?.balance, 700);
-check('part Lavage', b1.parts.find(p => p.key === 'lavage')?.balance, 0);
+check('part Magasin (700 déposés)', b1.parts.find(p => p.key === 'magasin')?.balance, 700);
 check('la Finance ne provoque aucun mouvement bancaire',
   b1.parts.find(p => p.key === 'systeme')?.balance, 0);
 check('la somme des parts EST le solde du compte',
@@ -153,14 +149,14 @@ check('le calcul se relit encore', reads(carb.cash), true);
 check('la banque aussi', reads(carb.banks), true);
 check('ses mouvements bancaires de la période', carb.banks.flow?.count, 2);
 
-const caf = filterWorkingCapital(r, 'cafeteria');
-check('caisse Cafétéria filtrée', caf.cashTotal, cafeteriaCash);
+const caf = filterWorkingCapital(r, 'magasin');
+check('caisse Magasin filtrée', caf.cashTotal, magasinCash);
 check('sa part en banque', caf.bankTotal, 700);
-check('entrées de la Cafétéria sur la période', caf.cash.flow?.in, 4000);
-check('sorties de la Cafétéria sur la période', caf.cash.flow?.out, 1500);
+check('entrées du Magasin sur la période', caf.cash.flow?.in, 4000);
+check('sorties du Magasin sur la période', caf.cash.flow?.out, 1500);
 
-const lav = filterWorkingCapital(r, 'lavage');
-check('caisse Lavage filtrée', lav.cashTotal, lavageCash);
+const lav = filterWorkingCapital(r, 'magasin');
+check('caisse Magasin filtrée (2)', lav.cashTotal, magasinCash);
 // Le dépôt est de juillet : rien dans la période, tout « hors période ».
 check('le solde du Lavage vient d\'avant la période', lav.cash.flow?.outside, 900);
 check('aucun mouvement dans la période', lav.cash.flow?.count, 0);

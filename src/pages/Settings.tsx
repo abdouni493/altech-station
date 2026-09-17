@@ -23,7 +23,6 @@ import {
   ArrowRight,
   CreditCard,
   MessageCircle,
-  QrCode,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn, litersFromDegrees } from "@/src/lib/utils";
@@ -37,8 +36,6 @@ import {
 } from "../lib/backup";
 import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
-import WhatsAppSettingsPanel from "../components/WhatsAppSettingsPanel";
-import QrCodePanel from "../components/QrCodePanel";
 
 const Settings = () => {
   const { t, i18n } = useTranslation();
@@ -47,7 +44,7 @@ const Settings = () => {
   const state = useAppState();
   const navigate = useNavigate();
   const { userId } = useAuth();
-  // Sert à vider la file d'attente Cafétéria / Lavage AVANT de sauvegarder.
+  // Sert à vider la file d'attente Magasin AVANT de sauvegarder.
   const bizSync = useBizSync();
 
   const [activeSection, setActiveSection] = useState("station");
@@ -254,7 +251,7 @@ const Settings = () => {
   // ── Sauvegarde & restauration ───────────────────────────────────────────────
   /**
    * La sauvegarde lit la BASE, pas l'écran : c'est la seule façon d'emporter les
-   * parties Cafétéria / Lavage (elles vivent dans `biz_store`, hors de cet état)
+   * partie Magasin (elle vit dans `biz_store`, hors de cet état)
    * et l'historique complet des ventes (l'état n'en garde que 500 lignes).
    */
   const runBackup = async (formats: ('json' | 'sql')[]) => {
@@ -474,8 +471,6 @@ const Settings = () => {
     { id: "paie", label: "Paramètres Paie", icon: DollarSign },
     { id: "appearance", label: "Apparence & Langue", icon: Palette },
     { id: "tpe", label: "Caisse TPE", icon: CreditCard },
-    { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-    { id: "qrcode", label: "QR Code", icon: QrCode },
     { id: "backup", label: "Sauvegarde & Système", icon: Database },
   ];
 
@@ -1207,27 +1202,6 @@ const Settings = () => {
                   </motion.div>
                 )}
 
-                {/* ── WHATSAPP ──
-                    La mise en service du téléphone de la station tient tout
-                    entière dans ce panneau : instance, QR code, webhook. Voir
-                    `src/components/WhatsAppSettingsPanel.tsx` pour ce qu'il
-                    s'interdit d'afficher (clé, jeton, URL complète). */}
-                {activeSection === "whatsapp" && (
-                  <motion.div key="whatsapp" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                    <WhatsAppSettingsPanel />
-                  </motion.div>
-                )}
-
-                {/* ── QR CODE ──
-                    Une adresse en carré noir et blanc, calculée sur le poste
-                    (`src/lib/qrcode.ts`, aucun appel réseau), puis téléchargée
-                    en PNG ou en SVG. */}
-                {activeSection === "qrcode" && (
-                  <motion.div key="qrcode" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                    <QrCodePanel />
-                  </motion.div>
-                )}
-
                 {/* ── BACKUP ── */}
                 {activeSection === "backup" && (
                   <motion.div key="backup" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-10">
@@ -1264,7 +1238,7 @@ const Settings = () => {
                         style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.75)" }}>
                         <span className="text-yellow-400 uppercase tracking-widest">Contenu :</span>{" "}
                         station-service (cuves, pompes, brigades, ventes, achats, bons, factures, trésorerie, personnel, clients, fournisseurs)
-                        {" + "}Cafétéria &amp; Lavage (produits, ventes, achats, employés, inventaires, caisse).
+                        {" + "}Magasin (produits, ventes, achats, employés, inventaires, caisse).
                         <span className="block mt-2 text-yellow-400/80">
                           Lu directement dans la base, sans limite de lignes — l'historique entier, pas seulement les 500 dernières ventes.
                         </span>

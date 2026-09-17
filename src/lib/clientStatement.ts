@@ -28,13 +28,13 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 import { clientLedger, clientOpening, ClientEntry, advanceAvailable } from './clientLedger';
-import { BizSale, BizReparation, BizContact, BizDocPayment, ModuleState, prestationsOf } from './bizConfig';
+import { BizSale, BizContact, BizDocPayment, ModuleState } from './bizConfig';
 
 const num = (v: any): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 export type StatementKind =
   | 'ouverture' | 'avance'
-  | 'bon' | 'magasin' | 'vente' | 'intervention' | 'reglement' | 'recharge' | 'retour';
+  | 'bon' | 'magasin' | 'vente' | 'reglement' | 'recharge' | 'retour';
 
 export const KIND_LABEL: Record<StatementKind, string> = {
   ouverture: 'Dette initiale',
@@ -42,7 +42,6 @@ export const KIND_LABEL: Record<StatementKind, string> = {
   bon: 'Bon carburant',
   magasin: 'Vente magasin',
   vente: 'Vente',
-  intervention: 'Intervention',
   reglement: 'Règlement',
   recharge: "Recharge d'avance",
   retour: 'Retour / échange',
@@ -55,7 +54,7 @@ export const KIND_COLOR: Record<StatementKind, string> = {
   // sarcelle — proche du vert des règlements sans se confondre avec eux, parce
   // que ce n'en est justement pas un.
   avance: '#0d9488',
-  bon: '#1d4ed8', magasin: '#0e7490', vente: '#0e7490', intervention: '#7c3aed',
+  bon: '#1d4ed8', magasin: '#0e7490', vente: '#0e7490',
   reglement: '#15803d', recharge: '#047857', retour: '#b45309',
 };
 
@@ -73,7 +72,7 @@ export interface StatementLine {
   date: string;
   kind: StatementKind;
   kindLabel: string;
-  /** Numéro du document (facture, bon, intervention…). */
+  /** Numéro du document (facture, bon…). */
   ref?: string;
   label: string;
   mode?: string;
@@ -358,42 +357,6 @@ function saleLine(s: BizSale): StatementLine {
   };
 }
 
-/** Une intervention lavage / vidange. */
-function repLine(r: BizReparation): StatementLine {
-  const canceled = r.status === 'canceled';
-  const items: StatementItem[] = [
-    ...prestationsOf(r).map(p => ({
-      name: p.label || (p.kind === 'lavage' ? 'Lavage' : 'Vidange'),
-      qty: 1,
-      unitPrice: num(p.amount),
-      total: num(p.amount),
-    })),
-    ...(r.usedProducts || []).map(u => ({
-      name: u.productName,
-      qty: num(u.qty),
-      unitPrice: num(u.unitPrice),
-      total: num(u.total ?? num(u.qty) * num(u.unitPrice)),
-    })),
-  ];
-  const car = [r.car?.marque, r.car?.name, r.car?.immatriculation].filter(Boolean).join(' ');
-  const rest = canceled ? 0 : num(r.rest);
-  return {
-    id: `rep-${r.id}`,
-    date: r.date,
-    kind: 'intervention',
-    kindLabel: r.kind === 'lavage' ? 'Lavage' : r.kind === 'mixte' ? 'Lavage + Vidange' : 'Vidange',
-    ref: r.ref,
-    label: [r.problem || 'Intervention', car].filter(Boolean).join(' — '),
-    status: r.status,
-    charged: canceled ? 0 : num(r.total),
-    paid: 0,
-    rest,
-    debtEffect: canceled ? 0 : num(r.total),
-    advanceEffect: 0,
-    qtyLabel: `${items.length} ligne(s)`,
-    items,
-  };
-}
 
 /**
  * L'OUVERTURE du compte d'un client de partie, rendue en lignes de journal.
@@ -497,7 +460,7 @@ function advanceDepositLines(client: BizContact | null): StatementLine[] {
     }));
 }
 
-/** Le relevé d'un client d'une partie (Cafétéria, Lavage & Vidange). */
+/** Le relevé d'un client de la partie Magasin. */
 export function bizClientStatement(
   state: ModuleState, client: BizContact | null, partLabel: string, from = '', to = '',
 ): ClientStatement {
@@ -510,11 +473,6 @@ export function bizClientStatement(
     // Une vente annulée a rendu l'argent : son encaissement et son
     // remboursement s'annulent, ils n'ont rien à faire au journal.
     if (s.status !== 'retournée' && s.status !== 'échangée') lines.push(...paymentLines(s));
-  }
-  for (const r of (state?.reparations || [])) {
-    if (!id || r.clientId !== id) continue;
-    lines.push(repLine(r));
-    if (r.status !== 'canceled') lines.push(...paymentLines(r));
   }
 
   const op = clientOpening(client as any);

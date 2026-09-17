@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   Wallet, PiggyBank, ArrowDownCircle, ArrowUpCircle, Plus, TrendingUp, TrendingDown, Layers,
-  Edit2, Trash2, Boxes, ShoppingCart, CreditCard, Banknote, Beaker,
-  Clock, UserCheck, PlayCircle, StopCircle, Scale, Eye, Flame, Car, Percent,
+  Edit2, Trash2, Boxes, ShoppingCart, CreditCard, Banknote,
+  Clock, UserCheck, PlayCircle, StopCircle, Scale, Eye, Flame, Percent,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { newId } from '@/src/lib/utils';
@@ -10,8 +10,6 @@ import { ModuleKey, MODULES, BizCaisseTx, BizSession, BizSale } from '@/src/lib/
 import { useBiz } from '@/src/store/BizContext';
 import { useBizPermission, useAppState } from '@/src/store/AppContext';
 import { computeModuleReport, caisseFlowOf } from '@/src/lib/bizReporting';
-import { computeBizWorkforce, WorkforceWorker } from '@/src/lib/workforceReporting';
-import { ServiceWorksPanel } from '@/src/components/biz/WorkforceView';
 import { useBizSessions } from '@/src/hooks/useBizSessions';
 import { CloseSessionModal } from './ModulePOS';
 import {
@@ -25,9 +23,9 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
   const biz = useBiz(moduleKey);
   const perm = useBizPermission(moduleKey, 'caisse');
   const app = useAppState();
-  const { caisse, comptoir, destructions } = biz.state;
+  const { caisse, destructions } = biz.state;
 
-  const [tab, setTab] = useState<'tresorerie' | 'travaux' | 'sessions'>('tresorerie');
+  const [tab, setTab] = useState<'tresorerie' | 'sessions'>('tresorerie');
   // Tableau par défaut sur les deux listes de l'écran — transactions de caisse
   // et historique des sessions. Les cartes restent à un clic.
   const [view, setView] = useState<'grid' | 'table'>('table');
@@ -45,7 +43,7 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
    * Généraux :
    *
    *   • « Ventes encaissées » ne lisait que les factures du point de vente et
-   *     IGNORAIT LES INTERVENTIONS — dans un atelier de lavage, c'est-à-dire
+   *     IGNORAIT LES VENTES — c'est-à-dire
    *     l'essentiel de la recette ;
    *   • achats, dépenses et salaires étaient sommés sur TOUTES LES DATES, sous
    *     un filtre de période qui laissait croire le contraire ;
@@ -80,14 +78,13 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
 
   const totals = useMemo(() => {
     const balance = report.caisseBalance;
-    const comptoirValue = comptoir.reduce((s, c) => s + c.qty * c.unitPrice, 0);
     const destroyed = (destructions || []).filter(d => !d.recovered).reduce((s, d) => s + d.value, 0);
     return {
       balance, cashIn: report.caisseFlow.in, cashOut: report.caisseFlow.out,
-      stockValue: report.stockValue, comptoirValue, destroyed,
-      tresorerie: balance + report.stockValue + comptoirValue,
+      stockValue: report.stockValue, destroyed,
+      tresorerie: balance + report.stockValue,
     };
-  }, [report, comptoir, destructions]);
+  }, [report, destructions]);
 
   // ── Period flows — lus sur les MÊMES mouvements que le solde ──
   const flow = useMemo(() => {
@@ -102,30 +99,6 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
       .filter(e => e.kind === 'Dépense' && e.paidInCash)
       .reduce((s, e) => s + e.amount, 0),
     [report]);
-
-  /**
-   * Les employés de l'activité et TOUT ce qu'ils ont fait sur la période — le
-   * même calcul que le rapport général. Réservé aux activités de service
-   * (Lavage & Vidange) : une cafétéria n'a pas de travaux nominatifs.
-   */
-  const crew: WorkforceWorker[] = useMemo(
-    () => (cfg.isService ? computeBizWorkforce(biz.state, moduleKey, range.from, range.to) : []),
-    [cfg.isService, biz.state, moduleKey, range]);
-
-  /**
-   * Les chiffres de l'équipe, repris à l'identique du rapport général : une
-   * intervention faite à deux n'est comptée qu'UNE fois dans le total de
-   * l'atelier, alors qu'elle compte bien pour chacun des deux.
-   */
-  const crewTotals = useMemo(() => {
-    const jobs = new Set<string>();
-    let earned = 0, base = 0, due = 0;
-    crew.forEach(w => {
-      w.works.forEach(x => jobs.add(x.id));
-      earned += w.earned; base += w.worksBase; due += w.dueNow;
-    });
-    return { jobs: jobs.size, earned, base, due, active: crew.filter(w => w.works.length > 0).length };
-  }, [crew]);
 
   // ── Destructions de la période (pertes de marchandise) ─────────────────────
   const destructionsInPeriod = useMemo(
@@ -153,44 +126,19 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader icon={Wallet} title="Caisse"
-        subtitle={`${cfg.label} — trésorerie, mouvements${cfg.isService ? ', travaux des employés' : ''} & sessions de travail`}
+        subtitle={`${cfg.label} — trésorerie, mouvements & sessions de travail`}
         actions={perm.creer ? <button className="btn-primary" onClick={() => setForm('new')}><Plus className="w-4 h-4" /> Dépôt / Retrait</button> : undefined} />
 
       <Tabs
         tabs={[
           { id: 'tresorerie', label: 'Trésorerie', icon: Wallet },
-          // Le travail des employés n'a d'onglet que là où il existe : une
-          // activité de service (Lavage & Vidange) paie ses employés SUR leurs
-          // interventions, et c'est ici qu'on les paie.
-          ...(cfg.isService ? [{ id: 'travaux', label: 'Travaux des employés', icon: Car }] : []),
           { id: 'sessions', label: 'Sessions de travail', icon: Clock },
         ]}
         active={tab}
-        onChange={id => setTab(id as 'tresorerie' | 'travaux' | 'sessions')}
+        onChange={id => setTab(id as 'tresorerie' | 'sessions')}
       />
 
       {tab === 'sessions' && <SessionsPanel moduleKey={moduleKey} />}
-
-      {/* ── Le travail des employés, employé par employé ────────────────────
-          La caisse d'un atelier ne sert pas qu'à compter les billets : c'est
-          d'ici que l'on règle les employés payés au pourcentage. Ce qu'ils ont
-          fait sur la période est donc lisible sur place — chaque intervention,
-          chaque prestation, la base retenue, leur part et ce qui leur reste dû
-          — au lieu d'obliger à ouvrir les Rapports Généraux pour le savoir. */}
-      {tab === 'travaux' && (
-        <div className="space-y-4">
-          <div className="card-glass p-4 space-y-2">
-            <PeriodFilter period={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
-            <p className="text-[11px] text-slate-400">
-              Même période que l'onglet Trésorerie — {rangeLabel}. Le <b>reste à payer</b> d'un employé couvre en
-              revanche TOUTES les dates : un travail d'un mois passé jamais réglé reste dû.
-            </p>
-          </div>
-          <div className="card-glass p-4 sm:p-5">
-            <ServiceWorksPanel workers={crew} from={range.from} to={range.to} />
-          </div>
-        </div>
-      )}
 
       {tab === 'tresorerie' && <>
       {/* Hero banners */}
@@ -212,9 +160,8 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
         <div className="rounded-2xl p-6 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #065f46, #047857)' }}>
           <div className="flex items-center gap-2 text-emerald-100"><PiggyBank className="w-5 h-5" /><span className="text-sm font-bold uppercase tracking-wide">Trésorerie globale</span></div>
           <p className="text-4xl font-black tabular-nums mt-2">{money(totals.tresorerie)}</p>
-          <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
+          <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
             <div className="rounded-xl bg-white/10 p-2.5"><p className="text-[10px] uppercase text-emerald-100 font-bold">Caisse</p><p className="font-black tabular-nums">{money(totals.balance)}</p></div>
-            <div className="rounded-xl bg-white/10 p-2.5"><p className="text-[10px] uppercase text-emerald-100 font-bold">Comptoir</p><p className="font-black tabular-nums">{money(totals.comptoirValue)}</p></div>
             <div className="rounded-xl bg-white/10 p-2.5"><p className="text-[10px] uppercase text-emerald-100 font-bold">Stock</p><p className="font-black tabular-nums">{money(totals.stockValue)}</p></div>
           </div>
           {totals.destroyed > 0 && (
@@ -254,9 +201,9 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={TrendingUp} label="Chiffre d'affaires" value={money(report.salesTotal)} tone="blue"
-          sub={`${report.counts.sales} opération(s)${cfg.isService ? ' — ventes & interventions' : ''}`} />
+          sub={`${report.counts.sales} opération(s)`} />
         <StatCard icon={Banknote} label="Ventes encaissées" value={money(report.salesPaid)} tone="green"
-          sub={cfg.isService ? 'factures ET interventions réglées' : 'ce que les ventes ont fait rentrer'} />
+          sub="ce que les ventes ont fait rentrer" />
         <StatCard icon={ShoppingCart} label="Achats payés" value={money(report.purchasesPaid)} tone="purple"
           sub={`sur ${money(report.purchasesTotal)} facturés`} />
         <StatCard icon={CreditCard} label="Dépenses" value={money(report.expensesTotal)} tone="red"
@@ -278,52 +225,6 @@ export default function ModuleCaisse({ moduleKey }: { moduleKey: ModuleKey }) {
         non. Les deux ne peuvent pas être égaux — un achat payé d'avance vide le tiroir sans rien coûter tant que la
         marchandise n'est pas vendue. Le <b>solde de caisse</b> affiché en tête, lui, couvre toutes les dates.
       </p>
-
-      {/* ── Le travail des employés, à un clic ──────────────────────────────
-          Une caisse d'atelier sert aussi à payer des employés au pourcentage :
-          ce qu'ils ont fait sur la période s'annonce ici, et le détail complet
-          — chaque intervention, chaque prestation, sa base et sa part —
-          s'ouvre dans son onglet. */}
-      {cfg.isService && crew.length > 0 && (
-        <button onClick={() => setTab('travaux')}
-          className="w-full text-left rounded-2xl p-4 sm:p-5 text-white transition-transform hover:-translate-y-0.5"
-          style={{ background: 'linear-gradient(135deg,#0e7490,#22d3ee)', boxShadow: '0 10px 28px rgba(14,116,144,0.30)' }}>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-              <Car className="w-6 h-6" />
-            </span>
-            <div className="min-w-0">
-              <p className="font-black text-[15px]">Travaux des employés — {rangeLabel}</p>
-              <p className="text-[12px] text-cyan-50">
-                Qui a travaillé, sur quoi, et ce qu'il faut lui payer. Cliquez pour tout déplier.
-              </p>
-            </div>
-            <span className="ml-auto text-xs font-black bg-white/20 rounded-lg px-3 py-1.5 shrink-0">
-              Voir le détail
-            </span>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-3">
-            <div className="rounded-xl bg-white/15 p-3">
-              <p className="text-[10px] uppercase font-black text-cyan-50">Interventions</p>
-              <p className="font-black tabular-nums text-lg">{crewTotals.jobs}</p>
-            </div>
-            <div className="rounded-xl bg-white/15 p-3">
-              <p className="text-[10px] uppercase font-black text-cyan-50">Employés au travail</p>
-              <p className="font-black tabular-nums text-lg">{crewTotals.active} <span className="text-xs font-bold">/ {crew.length}</span></p>
-            </div>
-            <div className="rounded-xl bg-white/15 p-3">
-              <p className="text-[10px] uppercase font-black text-cyan-50">Part des employés</p>
-              <p className="font-black tabular-nums text-lg">{money(crewTotals.earned)}</p>
-              <p className="text-[10px] text-cyan-50">sur {money(crewTotals.base)} de base retenue</p>
-            </div>
-            <div className="rounded-xl bg-white/15 p-3">
-              <p className="text-[10px] uppercase font-black text-cyan-50">Reste à leur payer</p>
-              <p className="font-black tabular-nums text-lg">{money(crewTotals.due)}</p>
-              <p className="text-[10px] text-cyan-50">travaux non encore réglés, toutes dates</p>
-            </div>
-          </div>
-        </button>
-      )}
 
       {/* Destructions de la période — le détail de la marchandise perdue */}
       <div className="card-glass overflow-hidden">

@@ -534,35 +534,6 @@ function bizPartAlerts(state: ModuleState | undefined, key: ModuleKey, dismissed
     });
   });
 
-  // 5. Demandes d'encaissement en attente (partie service uniquement).
-  if (cfg.isService) {
-    const pending = (state.payRequests || []).filter(r => r.status === 'pending');
-    if (pending.length > 0) {
-      push(out, dismissed, {
-        id: `${key}-payrequests-pending`,
-        type: 'warning',
-        icon: 'Wallet',
-        message: `${pending.length} demande(s) d'encaissement en attente`,
-        link: `${cfg.base}/encaissements`,
-        date: new Date(),
-        part,
-      });
-    }
-
-    // 6. Interventions non terminées.
-    const openJobs = (state.reparations || []).filter(r => r.status === 'pending');
-    if (openJobs.length > 0) {
-      push(out, dismissed, {
-        id: `${key}-reparations-pending`,
-        type: 'info',
-        icon: 'ClipboardList',
-        message: `${openJobs.length} intervention(s) en cours à finaliser`,
-        link: `${cfg.base}/reparations`,
-        date: new Date(),
-        part,
-      });
-    }
-  }
 
   return out;
 }

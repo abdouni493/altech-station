@@ -89,7 +89,7 @@ const app = {
   expenses: [
     { id: 'E1', date: '2026-08-15', amount: 5_000, category: 'Entretien', accountId: 'CAISSE_CARBURANT', part: 'carburant' },
     { id: 'E2', date: '2026-08-16', amount: 8_000, category: 'Loyer', accountId: 'B1', part: 'carburant' },
-    { id: 'E3', date: '2026-08-17', amount: 1_500, category: 'Gaz', accountId: 'CAISSE_CAFETERIA', part: 'cafeteria' },
+    { id: 'E3', date: '2026-08-17', amount: 1_500, category: 'Gaz', accountId: 'CAISSE_MAGASIN', part: 'magasin' },
     { id: 'E4', date: '2026-08-18', amount: 2_000, category: 'Frais bancaires', accountId: 'CAISSE', part: 'systeme' },
   ],
   clients: [{
@@ -111,7 +111,7 @@ const app = {
     // Un retrait imputé au Carburant.
     { id: 'T7', date: '2026-08-27', kind: 'WITHDRAW', amount: 6_000, accountFrom: 'CAISSE', part: 'carburant' },
     // Un dépôt imputé à la CAFÉTÉRIA : il ne doit rien faire au Carburant.
-    { id: 'T8', date: '2026-08-27', kind: 'DEPOSIT', amount: 9_000, accountTo: 'CAISSE', part: 'cafeteria' },
+    { id: 'T8', date: '2026-08-27', kind: 'DEPOSIT', amount: 9_000, accountTo: 'CAISSE', part: 'magasin' },
     // Un dépôt « Finance » : il reste dans la caisse générale, sans activité.
     { id: 'T9', date: '2026-08-27', kind: 'DEPOSIT', amount: 7_000, accountTo: 'CAISSE', part: 'systeme' },
     // Argent déplacé du coffre Carburant vers la caisse générale, toujours
@@ -216,32 +216,29 @@ console.log('\nLes parties commerciales suivent la même règle');
 const cafeteria: any = {
   caisse: [{ id: 'C1', type: 'deposit', amount: 1_000, date: '2026-08-05' }],
   sales: [{ id: 'S1', ref: 'V-1', date: '2026-08-06', clientName: 'Comptoir', total: 2_000, paid: 2_000, rest: 0, items: [] }],
-  reparations: [],
   purchases: [{ id: 'P1', ref: 'A-1', date: '2026-08-07', supplierName: 'Superette', total: 500, paid: 500, rest: 0, items: [] }],
   expenses: [],
   workers: [],
-  products: [], clients: [], suppliers: [], destructions: [], productions: [], comptoir: [], fiches: [],
+  products: [], clients: [], suppliers: [], destructions: [],
 };
 // 1 000 déposés + 2 000 encaissés − 500 d'achat = 2 500, puis les 9 000 du
 // dépôt imputé à la Cafétéria depuis la Caisse Générale.
 check('sans le grand livre : documents seuls',
-  moduleCaisseBalance(cafeteria, 'cafeteria', []), 2_500);
+  moduleCaisseBalance(cafeteria, 'magasin', []), 2_500);
 check('le dépôt imputé à la Cafétéria entre dans sa caisse',
-  moduleCaisseBalance(cafeteria, 'cafeteria', app.treasuryTransactions), 11_500);
+  moduleCaisseBalance(cafeteria, 'magasin', app.treasuryTransactions), 11_500);
 check("le dépôt Carburant n'entre pas dans la Cafétéria",
-  moduleCaisseMovements(cafeteria, 'cafeteria', app.treasuryTransactions).some(m => m.id === 'T6'), false);
-check('le Lavage, lui, ne reçoit rien',
-  moduleCaisseBalance({ ...cafeteria, caisse: [], sales: [], purchases: [] } as any, 'lavage', app.treasuryTransactions), 0);
+  moduleCaisseMovements(cafeteria, 'magasin', app.treasuryTransactions).some(m => m.id === 'T6'), false);
 
 console.log('\nLa dépense de la station imputée à une partie sort de SA caisse');
 // Les 11 500 précédents, moins les 1 500 de la dépense E3 imputée à la Cafétéria.
 check('E3 vide la caisse Cafétéria',
-  moduleCaisseBalance(cafeteria, 'cafeteria', app.treasuryTransactions, app.expenses), 10_000);
+  moduleCaisseBalance(cafeteria, 'magasin', app.treasuryTransactions, app.expenses), 10_000);
 check("les dépenses des autres activités ne l'atteignent pas",
-  moduleCaisseMovements(cafeteria, 'cafeteria', app.treasuryTransactions, app.expenses)
+  moduleCaisseMovements(cafeteria, 'magasin', app.treasuryTransactions, app.expenses)
     .filter(m => m.nature === 'Dépense').map(m => m.id), ['app-exp-E3']);
 check('et elle pèse dans le rapport de la Cafétéria',
-  computeModuleReport(cafeteria, 'cafeteria', FROM, TO, app.treasuryTransactions, app.expenses).expensesTotal,
+  computeModuleReport(cafeteria, 'magasin', FROM, TO, app.treasuryTransactions, app.expenses).expensesTotal,
   1_500);
 check("le rapport Carburant ne la compte pas", r.expensesTotal, 13_000);
 
@@ -250,14 +247,14 @@ console.log("\nUne dépense de partie réglée par la banque ne vide pas le tiro
 const cafeteriaExp: any = {
   ...cafeteria,
   expenses: [
-    { id: 'BX1', name: 'Café en grains', amount: 800, date: '2026-08-08', accountId: 'CAISSE_CAFETERIA' },
+    { id: 'BX1', name: 'Café en grains', amount: 800, date: '2026-08-08', accountId: 'CAISSE_MAGASIN' },
     { id: 'BX2', name: 'Assurance', amount: 3_000, date: '2026-08-09', accountId: 'B1' },
   ],
 };
 check('seule la dépense en espèces sort de la caisse',
-  moduleCaisseBalance(cafeteriaExp, 'cafeteria', app.treasuryTransactions, app.expenses), 10_000 - 800);
+  moduleCaisseBalance(cafeteriaExp, 'magasin', app.treasuryTransactions, app.expenses), 10_000 - 800);
 check('les deux comptent dans le rapport de la partie',
-  computeModuleReport(cafeteriaExp, 'cafeteria', FROM, TO, app.treasuryTransactions, app.expenses).expensesTotal,
+  computeModuleReport(cafeteriaExp, 'magasin', FROM, TO, app.treasuryTransactions, app.expenses).expensesTotal,
   800 + 3_000 + 1_500);
 
 // ─── Les salaires du personnel carburant sortent bien de SA caisse ───────────
@@ -303,7 +300,7 @@ const cafeteriaStaff: any = {
   }],
 };
 check('salaire ET acompte vident le tiroir de la partie',
-  moduleCaisseBalance(cafeteriaStaff, 'cafeteria', app.treasuryTransactions, app.expenses),
+  moduleCaisseBalance(cafeteriaStaff, 'magasin', app.treasuryTransactions, app.expenses),
   10_000 - 20_000 - 2_000);
 
 console.log(`\n${passed} vérification(s) passée(s), ${failed} échec(s).`);

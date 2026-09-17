@@ -1,9 +1,9 @@
 /**
  * ─── Business Modules Store ────────────────────────────────────────────────────
- * Store des parties commerciales (Cafétéria, Lavage & Vidange), tenu à part
- * des tables carburant de `AppContext`.
+ * Store de la partie commerciale « Magasin », tenu à part des tables carburant
+ * de `AppContext`.
  *
- *   const biz = useBiz('cafeteria');
+ *   const biz = useBiz('magasin');
  *   biz.state.products; biz.add('products', {...}); await biz.flush();
  *
  * ─── POURQUOI UNE CRÉATION NE PEUT PLUS SE PERDRE ──────────────────────────────
@@ -114,7 +114,7 @@ function reducer(state: BizState, action: Action): BizState {
           ...mod,
           deletedIds,
           [action.coll]: [item, ...(mod[action.coll] as any[])],
-        },
+        } as SyncModuleState,
       };
     }
     case 'UPDATE': {
@@ -140,7 +140,7 @@ function reducer(state: BizState, action: Action): BizState {
           ...mod,
           deletedIds: { ...(mod.deletedIds || {}), [action.id]: nowIso() },
           [action.coll]: (mod[action.coll] as any[]).filter(x => x.id !== action.id),
-        },
+        } as SyncModuleState,
       };
     }
     case 'SET': {
@@ -156,8 +156,6 @@ function reducer(state: BizState, action: Action): BizState {
       if ('posPinned' in patch) patch.posPinnedUpd = nowIso();
       // Idem pour l'option « coût moyen pondéré » de la partie.
       if ('avgCostEnabled' in patch) patch.avgCostEnabledUpd = nowIso();
-      // Idem pour les délais de rappel des clients (lavage / vidange).
-      if ('rappelConfig' in patch) patch.rappelConfigUpd = nowIso();
       return { ...state, [action.module]: { ...mod, ...patch } };
     }
     case 'REPLACE':
@@ -171,7 +169,7 @@ function reducer(state: BizState, action: Action): BizState {
     case 'SET_SESSIONS': {
       const next = { ...state } as BizState;
       let changed = false;
-      (['cafeteria', 'lavage'] as ModuleKey[]).forEach(key => {
+      (['magasin'] as ModuleKey[]).forEach(key => {
         const remote = action.sessions[key] || [];
         const known = new Set(remote.map(s => s.id));
         const localOnly = (state[key]?.sessions || []).filter(s => !known.has(s.id));
@@ -198,27 +196,23 @@ function sessionsSignature(list: BizSession[]): string {
 }
 
 function isValidState(v: any): v is BizState {
-  return !!v && !!v.cafeteria && !!v.lavage;
+  return !!v && !!v.magasin;
 }
 
 /** Collections merged from a removed part into a surviving one. */
 const MERGED_COLLECTIONS: BizCollection[] = [
   'categories', 'marques', 'roles', 'products', 'purchases', 'sales',
-  'clients', 'suppliers', 'workers', 'expenses', 'caisse', 'reparations',
-  'productions', 'fiches', 'comptoir', 'destructions', 'sessions', 'payRequests',
-  'inventaires', 'messageTemplates', 'rappels',
+  'clients', 'suppliers', 'workers', 'expenses', 'caisse',
+  'destructions', 'sessions', 'inventaires',
 ];
 
 
 /**
- * Brings a state saved by an older build up to the current shape:
- *  • the Restaurant part was removed        → its data folds into Cafétéria
- *  • the Magasin part was removed          → its data folds into Lavage
- *    (that part now hosts the point-de-vente and ventes screens)
- *  • the Services catalogue was removed     → each intervention keeps the sum of
- *    its services as the hand-typed `serviceTotal`
- *  • appointments were removed              → kept as pending interventions
- *  • the new `sessions` / `payRequests` collections are created empty
+ * Brings a state saved by an older build up to the current shape. Les parties
+ * Restaurant, Cafétéria, Magasin et Lavage & Vidange ont toutes été retirées :
+ * ce qu'elles contenaient est replié dans l'unique partie « Magasin », et les
+ * collections qui n'existent plus (interventions, productions, comptoir,
+ * demandes d'encaissement, messages) sont simplement abandonnées.
  *
  * Merging deletes the legacy key, so the migration never runs twice.
  */
@@ -239,72 +233,28 @@ function migrate(raw: any): BizState | null {
     state[into] = dst;
     delete state[from];
   };
-  fold('restaurant', 'cafeteria');
-  fold('magasin', 'lavage');
+  fold('restaurant', 'magasin');
+  fold('cafeteria', 'magasin');
+  fold('lavage', 'magasin');
 
-  for (const key of ['cafeteria', 'lavage'] as ModuleKey[]) {
-    const mod = state[key] || EMPTY_MODULE();
-    // Guarantee every collection of the current ModuleState exists.
-    const base: any = EMPTY_MODULE();
-    for (const k of Object.keys(base)) if (!Array.isArray(mod[k])) mod[k] = base[k];
-    // Méta-données de fusion (ajoutées par une version plus récente).
-    if (!mod.deletedIds || typeof mod.deletedIds !== 'object') mod.deletedIds = {};
-    // Reste du jeu de démonstration retiré : il ne doit plus rien peupler —
-    // sans pour autant couper les liens des lignes de la station.
-    purgeSeedRows(mod);
-    // Filet pour les copies déjà abîmées par la première version du nettoyage :
-    // un produit sans catégorie vivante retrouve la sienne par son nom.
-    relinkOrphanRefs(mod);
-
-    mod.reparations = (mod.reparations as any[]).map(r => {
-      const legacyServices: { price?: number }[] = Array.isArray(r.services) ? r.services : [];
-      const serviceTotal = typeof r.serviceTotal === 'number'
-        ? r.serviceTotal
-        : legacyServices.reduce((s, x) => s + (Number(x.price) || 0), 0);
-      const { services, comingDate, ...rest } = r;
-      const kind = r.kind === 'appointment' ? 'reparation' : r.kind;
-      // One prestation per intervention before the multi-prestation form existed:
-      // rebuilding it here means every screen can read `prestations` blindly.
-      const prestations = Array.isArray(r.prestations) && r.prestations.length
-        ? r.prestations
-        : (serviceTotal > 0
-          ? [{
-            id: `${r.id}-p1`,
-            kind: kind === 'mixte' ? 'reparation' : kind,
-            label: r.problem || (kind === 'lavage' ? 'Lavage' : 'Vidange'),
-            amount: serviceTotal,
-            workerIds: Array.isArray(r.workers) ? r.workers : [],
-          }]
-          : []);
-      const productsTotal = (Array.isArray(r.usedProducts) ? r.usedProducts : [])
-        .reduce((s: number, x: any) => s + (Number(x.total) || (Number(x.qty) || 0) * (Number(x.unitPrice) || 0)), 0);
-      return {
-        ...rest,
-        serviceTotal,
-        prestations,
-        // No remise existed before: the subtotal is simply the old total.
-        subtotal: typeof r.subtotal === 'number' ? r.subtotal : serviceTotal + productsTotal,
-        discountType: r.discountType,
-        discountValue: r.discountValue,
-        discountAmount: typeof r.discountAmount === 'number' ? r.discountAmount : 0,
-        kind,
-        status: r.kind === 'appointment' ? 'pending' : r.status,
-      };
-    });
-
-    // Lavage employees created before the speciality existed are polyvalent, so
-    // they keep showing up on both kinds of prestation.
-    mod.workers = (mod.workers as any[]).map(w => ({
-      ...w,
-      workerKind: w.workerKind || (key === 'lavage' ? 'both' : undefined),
-    }));
-    delete mod.services;
-    state[key] = mod;
+  const mod = state.magasin || EMPTY_MODULE();
+  // Guarantee every collection of the current ModuleState exists.
+  const base: any = EMPTY_MODULE();
+  for (const k of Object.keys(base)) if (!Array.isArray(mod[k])) mod[k] = base[k];
+  // Méta-données de fusion (ajoutées par une version plus récente).
+  if (!mod.deletedIds || typeof mod.deletedIds !== 'object') mod.deletedIds = {};
+  purgeSeedRows(mod);
+  relinkOrphanRefs(mod);
+  // Collections des parties retirées : elles ne doivent plus rien traîner.
+  for (const dead of ['reparations', 'payRequests', 'productions', 'fiches',
+                      'comptoir', 'messageTemplates', 'rappels', 'services']) {
+    delete mod[dead];
   }
+  state.magasin = mod;
 
-  // Drop any other unknown top-level part so the store stays exactly two parts.
+  // Drop any other unknown top-level part so the store stays exactly one part.
   for (const k of Object.keys(state)) {
-    if (k !== 'cafeteria' && k !== 'lavage') delete state[k];
+    if (k !== 'magasin') delete state[k];
   }
   return isValidState(state) ? (state as BizState) : null;
 }
@@ -802,9 +752,9 @@ export function BizProvider({ children }: { children: React.ReactNode }) {
       const row = payload.new as { id?: string; module_key?: string; data?: BizProduct } | null;
       if (!hydratedRef.current || !row?.id || !row?.data) return;
       const key = row.module_key as ModuleKey;
-      if (key !== 'cafeteria' && key !== 'lavage') return;
+      if (key !== 'magasin') return;
       applyRemoteCatalogue({
-        cafeteria: [], lavage: [], [key]: [{ ...row.data, id: row.id }],
+        [key]: [{ ...row.data, id: row.id }],
       } as Record<ModuleKey, BizProduct[]>);
     };
     const unsub = subscribeTable('biz_products', onRow);

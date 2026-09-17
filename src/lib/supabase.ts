@@ -587,7 +587,7 @@ export async function provisionWorkerAccount(input: {
 // These employees live in the BizContext store, so they need their own auth
 // provisioning path (see supabase/migrations/module_workers_auth.sql).
 
-export type BizModuleKey = 'cafeteria' | 'lavage';
+export type BizModuleKey = 'magasin';
 
 export interface ModuleWorkerRow {
   id: string;

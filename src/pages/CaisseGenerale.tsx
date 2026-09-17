@@ -3,18 +3,18 @@
  * Single place where the money of the whole station is read and moved.
  *
  *  • Solde de la caisse générale — les ESPÈCES de la station : la somme des
- *    caisses Carburant, Cafétéria et Lavage. Rien de ce qui dort en banque n'y
+ *    caisses Carburant et Magasin. Rien de ce qui dort en banque n'y
  *    entre, pour que ce chiffre réponde à « qu'y a-t-il dans les tiroirs ? ».
  *  • Trésorerie totale — toutes les caisses (Finance comprise) PLUS les comptes
  *    bancaires : le seul chiffre qui réunit tout l'argent de la station.
- *  • Caisse de chaque partie — Carburant, Cafétéria and Lavage & Vidange, each
+ *  • Caisse de chaque partie — Carburant et Magasin, each
  *    computed from its own documents ; la quatrième carte est celle de la
  *    Finance, c.-à-d. la part du tiroir commun qui n'appartient à aucune activité.
  *  • Journal des opérations — every movement of the station in one list: achats,
  *    ventes, virements, dépôts, retraits, dépenses, encaissements de brigade.
  *  • Actions — dépôt / retrait (montant, description, date) and virement: the
- *    user picks WHICH caisse the money leaves (générale, Carburant, Cafétéria,
- *    Lavage) and WHERE it goes (a bank account or another caisse). The movement
+ *    user picks WHICH caisse the money leaves (générale, Carburant, Magasin)
+ *    and WHERE it goes (a bank account or another caisse). The movement
  *    is a single ledger line, so it also shows up in the destination account's
  *    historique with the right sign.
  * ──────────────────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   PiggyBank, Plus, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Layers,
-  Fuel, Coffee, Droplets, Landmark, Trash2, Edit2, ShoppingCart, Receipt,
+  Fuel, Store, Landmark, Trash2, Edit2, ShoppingCart, Receipt,
   CreditCard, Target, Wallet, TrendingUp, TrendingDown, ArrowRight, Check,
   HandCoins, Search, Users, Flag, X,
 } from 'lucide-react';
@@ -51,7 +51,7 @@ const todayISO = () => new Date().toISOString().split('T')[0];
 
 /**
  * Un mouvement d'UNE caisse : la ligne élémentaire dont la somme FAIT le solde
- * affiché. Carburant, Cafétéria, Lavage et Finance rendent tous cette forme, si
+ * affiché. Carburant, Magasin et Finance rendent tous cette forme, si
  * bien qu'aucune carte de cet écran ne peut annoncer un chiffre que sa propre
  * liste ne justifie pas.
  */
@@ -106,8 +106,7 @@ const salaryPaidInCash = (mode?: string): boolean => {
 
 const PART_META: Record<TreasuryPart, { label: string; icon: React.ElementType; tone: string }> = {
   carburant: { label: 'Carburant', icon: Fuel, tone: '#003087' },
-  cafeteria: { label: 'Cafétéria', icon: Coffee, tone: '#b45309' },
-  lavage: { label: 'Lavage & Vidange', icon: Droplets, tone: '#0e7490' },
+  magasin: { label: 'Magasin', icon: Store, tone: '#0e7490' },
   systeme: { label: 'Finance', icon: Landmark, tone: '#4c1d95' },
 };
 
@@ -157,7 +156,7 @@ export default function CaisseGenerale() {
   /**
    * Les mouvements de CHAQUE caisse, dans la définition qui fait autorité pour
    * elle : `lib/carburantSales` pour le Carburant, `lib/bizReporting` pour la
-   * Cafétéria et le Lavage, le grand livre pour la Finance. Les mêmes fonctions
+   * Magasin, le grand livre pour la Finance. Les mêmes fonctions
    * servent aux Rapports Généraux — les deux écrans ne peuvent donc pas
    * annoncer deux soldes différents.
    *
@@ -192,8 +191,7 @@ export default function CaisseGenerale() {
     };
     return {
       carburant: computeCarburantCash(state).lines,
-      cafeteria: bizLines('cafeteria'),
-      lavage: bizLines('lavage'),
+      magasin: bizLines('magasin'),
       systeme: financeLines,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,8 +199,7 @@ export default function CaisseGenerale() {
 
   const partBalances = useMemo(() => ({
     carburant: sumLines(partLines.carburant),
-    cafeteria: sumLines(partLines.cafeteria),
-    lavage: sumLines(partLines.lavage),
+    magasin: sumLines(partLines.magasin),
     systeme: sumLines(partLines.systeme),
   }), [partLines]);
 
@@ -215,7 +212,7 @@ export default function CaisseGenerale() {
    * ici : ce chiffre répond à « combien y a-t-il dans les tiroirs ? ».
    */
   const caissesActivites =
-    partBalances.carburant + partBalances.cafeteria + partBalances.lavage;
+    partBalances.carburant + partBalances.magasin;
   /** Toutes les caisses de la station, le tiroir de la Finance compris. */
   const caissesTotal = caissesActivites + financeCash;
   /** Toute la trésorerie : les caisses ET les comptes bancaires. */
@@ -382,7 +379,7 @@ export default function CaisseGenerale() {
       }
     }
 
-    // 3. Business parts (Cafétéria / Lavage) — sales, interventions, purchases…
+    // 3. Partie Magasin — ventes, achats, dépenses, caisse…
     (Object.keys(MODULES) as ModuleKey[]).forEach(key => {
       const m = biz[key];
       if (!m) return;
@@ -400,11 +397,6 @@ export default function CaisseGenerale() {
         id: `${key}-sale-${l.id}`, date: l.date, nature: 'Vente', part,
         label: `Vente ${s.ref} — ${s.clientName}`
           + (s.status === 'retournée' ? ' (retournée)' : s.status === 'échangée' ? ' (échangée)' : ''),
-        amount: l.amount,
-      }))));
-      m.reparations.forEach(r => docPaymentSlices(r, r.paid).forEach(l => out.push(cashRow({
-        id: `${key}-rep-${l.id}`, date: l.date, nature: 'Vente', part,
-        label: `${r.kind === 'lavage' ? 'Lavage' : r.kind === 'reparation' ? 'Vidange' : 'Lavage + Vidange'} ${r.ref} — ${r.clientName}`,
         amount: l.amount,
       }))));
       // Un règlement encaissé sur la DETTE INITIALE d'un client de partie est de
@@ -470,7 +462,7 @@ export default function CaisseGenerale() {
    *
    * Les trois activités sont lues à la MÊME source que leur écran Clients : les
    * pièces pour le Carburant (`clientLedgers`), les documents et la reprise pour
-   * la Cafétéria et le Lavage. Un chiffre affiché ici se retrouve donc, au
+   * le Magasin. Un chiffre affiché ici se retrouve donc, au
    * dinar près, dans le dossier du client.
    */
   const clientDebts = useMemo(() => {
@@ -507,7 +499,7 @@ export default function CaisseGenerale() {
       });
     }
 
-    // ── Cafétéria / Lavage ─────────────────────────────────────────────────
+    // ── Magasin ────────────────────────────────────────────────────────────
     // Les documents sont regroupés par client EN UNE passe : appeler le relevé
     // complet une fois par client relirait toutes les ventes de la partie
     // autant de fois qu'elle a de clients.
@@ -533,16 +525,6 @@ export default function CaisseGenerale() {
           cur.rest += Number(sale.rest) || 0;
         }
         cur.ops += 1; stamp(cur, sale.date);
-      }
-      for (const r of (m.reparations || [])) {
-        if (!r.clientId) continue;
-        const cur = touch(r.clientId);
-        if (r.status !== 'canceled') {
-          cur.charged += Number(r.total) || 0;
-          cur.paid += Number(r.paid) || 0;
-          cur.rest += Number(r.rest) || 0;
-        }
-        cur.ops += 1; stamp(cur, r.date);
       }
       for (const c of (m.clients || [])) {
         const cur = agg.get(c.id) || { charged: 0, paid: 0, rest: 0, ops: 0, last: '' };
@@ -572,7 +554,7 @@ export default function CaisseGenerale() {
     /** L'argent des clients que la station détient — une dette envers eux. */
     advance: clientDebts.reduce((t, r) => t + r.advance, 0),
     debtors: clientDebts.filter(r => r.rest > 0.004).length,
-    byPart: (['carburant', 'cafeteria', 'lavage'] as const).map(k => ({
+    byPart: (['carburant', 'magasin'] as const).map(k => ({
       part: k,
       rest: clientDebts.filter(r => r.part === k).reduce((t, r) => t + r.rest, 0),
     })),
@@ -681,13 +663,13 @@ export default function CaisseGenerale() {
             {money(caissesActivites)}
           </p>
           <p className="text-[11px] text-blue-200 mt-1">
-            Somme des caisses Carburant, Cafétéria et Lavage — <strong>espèces uniquement</strong>.
+            Somme des caisses Carburant et Magasin — <strong>espèces uniquement</strong>.
             L'argent placé en banque n'entre pas dans ce solde.
           </p>
           {/* L'addition est écrite en toutes lettres : trois caisses, un total.
               Chaque terme est cliquable et s'ouvre ligne par ligne. */}
           <div className="grid grid-cols-3 gap-2 mt-4">
-            {(['carburant', 'cafeteria', 'lavage'] as const).map(k => (
+            {(['carburant', 'magasin'] as const).map(k => (
               <button key={k} onClick={() => setDetailPart(k)}
                 className="rounded-xl bg-white/10 hover:bg-white/20 transition-colors px-2.5 py-2 text-left">
                 <p className="text-[10px] uppercase text-blue-200 font-bold truncate">{PART_META[k].label}</p>
@@ -701,7 +683,7 @@ export default function CaisseGenerale() {
             ))}
           </div>
           <p className="text-[10px] text-blue-300 tabular-nums mt-2 leading-snug">
-            {money(partBalances.carburant)} + {money(partBalances.cafeteria)} + {money(partBalances.lavage)} = {money(caissesActivites)}
+            {money(partBalances.carburant)} + {money(partBalances.magasin)} = {money(caissesActivites)}
           </p>
         </div>
 
@@ -765,7 +747,7 @@ export default function CaisseGenerale() {
           additionnait. Les quatre cartes font maintenant exactement le total
           « Toutes les caisses » affiché en haut. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {(['carburant', 'cafeteria', 'lavage', 'systeme'] as const).map(key => {
+        {(['carburant', 'magasin', 'systeme'] as const).map(key => {
           const meta = PART_META[key]; const Icon = meta.icon;
           const val = partBalances[key];
           const spent = partSpending[key] || { expenses: 0, count: 0, bank: 0 };
@@ -927,7 +909,7 @@ export default function CaisseGenerale() {
                     </span>
                   </td>
                   <td className="px-5 py-2.5">
-                    <Badge tone={r.part === 'carburant' ? 'primary' : r.part === 'cafeteria' ? 'warning' : 'info'}>
+                    <Badge tone={r.part === 'carburant' ? 'primary' : 'info'}>
                       {r.partLabel}
                     </Badge>
                   </td>
@@ -1492,7 +1474,7 @@ function CashTxModal({
 // ─── Virement : d'une caisse vers un compte bancaire (ou une autre caisse) ─────
 /**
  * The user chooses BOTH sides of the movement:
- *   • la caisse source — générale, Carburant, Cafétéria ou Lavage & Vidange
+ *   • la caisse source — générale, Carburant ou Magasin
  *   • la destination   — n'importe quel compte bancaire, ou une autre caisse
  *
  * One single `TRANSFER` line is written, so the money leaves the chosen caisse
@@ -1504,7 +1486,7 @@ function CaisseTransferModal({
 }: {
   accounts: { id: string; name: string; balance: number }[];
   caisseBalance: number;
-  partBalances: Record<'carburant' | 'cafeteria' | 'lavage', number>;
+  partBalances: Record<'carburant' | 'magasin', number>;
   createdBy?: string;
   onClose: () => void;
   onSave: (tx: TreasuryTransaction) => void;
@@ -1512,7 +1494,7 @@ function CaisseTransferModal({
   /** Every cash box the money can leave, with its live solde. */
   const sources = useMemo(() => ([
     { id: CAISSE_ID, label: CASH_ACCOUNT_LABEL[CAISSE_ID], part: 'systeme' as TreasuryPart, icon: PiggyBank, balance: caisseBalance },
-    ...(['carburant', 'cafeteria', 'lavage'] as const).map(k => ({
+    ...(['carburant', 'magasin'] as const).map(k => ({
       id: CAISSE_PART_ID[k],
       label: PART_META[k].label,
       part: k as TreasuryPart,

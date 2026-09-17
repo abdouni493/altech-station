@@ -22,7 +22,7 @@ import { cn, matchesSearch } from '@/src/lib/utils';
 import { money, formatDate, Modal, Badge, Table, Select } from '@/src/components/biz/Kit';
 import ChartBox from '@/src/components/ChartBox';
 import {
-  PartAnalytics, ProductAnalytics, ProductionAnalytics, Granularity,
+  PartAnalytics, ProductAnalytics, Granularity,
   GRANULARITY_LABEL, PRODUCT_KIND_LABEL, ProductKind, DeadStockRow,
 } from '@/src/lib/bizAnalytics';
 
@@ -469,11 +469,6 @@ export default function AnalyticsView({ analytics: a, onGranularity }: {
         </div>
       )}
 
-      {/* ── Productions ── */}
-      {a.productions.length > 0 && (
-        <ProductionSection rows={a.productions} />
-      )}
-
       {/* ── Tableau détaillé, recherche par nom ou code-barres ── */}
       <div className="space-y-3">
         <SectionTitle icon={PackageSearch} title="Analyse produit par produit"
@@ -542,103 +537,3 @@ export default function AnalyticsView({ analytics: a, onGranularity }: {
   );
 }
 
-// ─── Productions (cafétéria) ─────────────────────────────────────────────────
-function ProductionSection({ rows }: { rows: ProductionAnalytics[] }) {
-  const [picked, setPicked] = useState<ProductionAnalytics | null>(null);
-  const totals = rows.reduce((a, r) => ({
-    produced: a.produced + r.produced, cost: a.cost + r.cost, value: a.value + r.value,
-    loss: a.loss + r.lossValue, sold: a.sold + r.soldRevenue, gain: a.gain + r.soldGain,
-  }), { produced: 0, cost: 0, value: 0, loss: 0, sold: 0, gain: 0 });
-
-  const chartData = rows.slice(0, 10).map(r => ({
-    name: r.name, produced: r.produced, cost: r.cost, sold: r.soldRevenue, gain: r.soldGain,
-  }));
-
-  return (
-    <div className="space-y-3">
-      <SectionTitle icon={Beaker} title="Analyse des produits fabriqués"
-        hint="Ce qui a été produit, ce que ça a coûté, les pertes, et ce que la vente en a tiré" />
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi icon={Beaker} tone="purple" label="Fabriqué" value={totals.produced.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}
-          sub={`${rows.length} produit(s) fabriqué(s)`} />
-        <Kpi icon={Layers} tone="amber" label="Coût de fabrication" value={money(totals.cost)} />
-        <Kpi icon={TrendingUp} tone="green" label="Vendu (fabriqués)" value={money(totals.sold)}
-          sub={`Gain ${money(totals.gain)}`} />
-        <Kpi icon={Flame} tone="red" label="Pertes de production" value={money(totals.loss)} />
-      </div>
-
-      <div className="card-glass p-4">
-        <ChartBox height={280}>
-          <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-            <XAxis dataKey="name" tick={AXIS} tickLine={false} axisLine={false} interval={0} height={48} angle={-18} textAnchor="end" />
-            <YAxis tick={AXIS} tickLine={false} axisLine={false} tickFormatter={shortMoney} width={52} />
-            <Tooltip {...tooltipStyle} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="cost" name="Coût de fabrication" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={24} />
-            <Bar dataKey="sold" name="Vendu" fill="#003087" radius={[4, 4, 0, 0]} maxBarSize={24} />
-            <Bar dataKey="gain" name="Gain" fill="#0e9f6e" radius={[4, 4, 0, 0]} maxBarSize={24} />
-          </BarChart>
-        </ChartBox>
-      </div>
-
-      <Table head={<>
-        <th className="table-head">Produit fabriqué</th><th className="table-head text-right">Fabrications</th>
-        <th className="table-head text-right">Quantité</th><th className="table-head text-right">Coût unitaire</th>
-        <th className="table-head text-right">Coût total</th><th className="table-head text-right">Pertes</th>
-        <th className="table-head text-right">Vendu</th><th className="table-head text-right">Gain</th>
-        <th className="table-head text-right">Invendu</th><th className="table-head" />
-      </>}>
-        {rows.map(r => (
-          <tr key={r.name} className="cursor-pointer hover:bg-slate-50" onClick={() => setPicked(r)}>
-            <td className="table-cell font-bold text-slate-700">{r.name}</td>
-            <td className="table-cell tabular-nums text-right text-slate-500">{r.runs}</td>
-            <td className="table-cell tabular-nums text-right">{r.produced.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}{r.unit ? ` ${r.unit}` : ''}</td>
-            <td className="table-cell tabular-nums text-right text-slate-500">{money(r.costPerUnit)}</td>
-            <td className="table-cell tabular-nums text-right text-amber-700">{money(r.cost)}</td>
-            <td className={cn('table-cell tabular-nums text-right', r.lossValue > 0 ? 'text-red-600 font-bold' : 'text-slate-300')}>
-              {r.lossValue > 0 ? money(r.lossValue) : '—'}
-            </td>
-            <td className="table-cell tabular-nums text-right font-bold text-blue-700">{money(r.soldRevenue)}</td>
-            <td className={cn('table-cell tabular-nums text-right font-black', r.soldGain >= 0 ? 'text-emerald-600' : 'text-red-600')}>{money(r.soldGain)}</td>
-            <td className={cn('table-cell tabular-nums text-right', r.unsold > 0 ? 'text-amber-600' : 'text-slate-300')}>
-              {r.unsold > 0 ? r.unsold.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : '—'}
-            </td>
-            <td className="table-cell text-right"><ChevronRight className="w-4 h-4 text-slate-300 inline" /></td>
-          </tr>
-        ))}
-      </Table>
-
-      <Modal open={!!picked} onClose={() => setPicked(null)} icon={Beaker} size="2xl"
-        title={picked?.name || ''} subtitle="Produit fabriqué — analyse de la période">
-        {picked && (
-          <div className="space-y-4">
-            <ProductChart points={picked.points} />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {([
-                ['Fabrications', String(picked.runs)],
-                ['Quantité produite', `${picked.produced.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}${picked.unit ? ` ${picked.unit}` : ''}`],
-                ['Coût unitaire', money(picked.costPerUnit)],
-                ['Coût total', money(picked.cost)],
-                ['Valeur produite', money(picked.value)],
-                ['Envoyé au comptoir', picked.sentToComptoir.toLocaleString('fr-FR', { maximumFractionDigits: 2 })],
-                ['Pertes (quantité)', picked.lossQty.toLocaleString('fr-FR', { maximumFractionDigits: 2 })],
-                ['Pertes (coût)', money(picked.lossValue)],
-                ['Vendu sur la période', money(picked.soldRevenue)],
-                ['Gain des ventes', money(picked.soldGain)],
-                ['Quantité vendue', picked.soldQty.toLocaleString('fr-FR', { maximumFractionDigits: 2 })],
-                ['Invendu (produit − vendu)', picked.unsold.toLocaleString('fr-FR', { maximumFractionDigits: 2 })],
-              ] as [string, string][]).map(([k, v]) => (
-                <div key={k} className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">{k}</p>
-                  <p className="font-bold text-slate-700 text-sm">{v}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
-}

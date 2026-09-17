@@ -39,77 +39,46 @@ import Feedbacks from "./pages/Feedbacks";
 import ClientFeedback from "./pages/ClientFeedback";
 import { FeedbackProvider } from "./store/FeedbackContext";
 
-// ─── Business modules (Cafétéria / Lavage & Vidange) ───────────────────────
+// ─── Partie commerciale : Magasin ──────────────────────────────────────────
 import { BizProvider } from "./store/BizContext";
 import { MODULES, ModuleKey } from "./lib/bizConfig";
 import ModuleStock from "./pages/modules/ModuleStock";
 import ModuleInventaire from "./pages/modules/ModuleInventaire";
 import ModulePurchases from "./pages/modules/ModulePurchases";
-import ModuleProduction from "./pages/modules/ModuleProduction";
-import ModuleComptoir from "./pages/modules/ModuleComptoir";
 import ModulePOS from "./pages/modules/ModulePOS";
 import ModuleSales from "./pages/modules/ModuleSales";
 import ModuleClients from "./pages/modules/ModuleClients";
-import ModuleMessages from "./pages/modules/ModuleMessages";
 import ModuleSuppliers from "./pages/modules/ModuleSuppliers";
 import ModuleWorkers from "./pages/modules/ModuleWorkers";
 import ModuleExpenses from "./pages/modules/ModuleExpenses";
 import ModuleCaisse from "./pages/modules/ModuleCaisse";
 import ModuleReports from "./pages/modules/ModuleReports";
-import ModuleReparations from "./pages/modules/ModuleReparations";
-import ModuleEncaissements from "./pages/modules/ModuleEncaissements";
 import ModuleFeedbacks from "./pages/modules/ModuleFeedbacks";
 import GeneralReports from "./pages/GeneralReports";
 
-// Builds the route list for one business module based on its capabilities.
+// Builds the route list for the Magasin part.
 // `iface` is the permission interface id (see MODULE_INTERFACES) used to gate
 // the route for employees of that part.
 interface ModuleRoute { path: string; iface: string; moduleKey: ModuleKey; element: React.ReactElement }
 
 function buildModuleRoutes(key: ModuleKey): ModuleRoute[] {
-  const cfg = MODULES[key];
-  const b = cfg.base;
+  const b = MODULES[key].base;
   const routes: ModuleRoute[] = [];
   const add = (sub: string, element: React.ReactElement) =>
     routes.push({ path: `${b}/${sub}`, iface: sub, moduleKey: key, element });
 
-  if (cfg.isService) {
-    add('reparations', <ModuleReparations moduleKey={key} />);
-    add('encaissements', <ModuleEncaissements moduleKey={key} />);
-    // Point de vente + Ventes moved here when the Magasin part was removed.
-    add('pos', <ModulePOS moduleKey={key} />);
-    add('sales', <ModuleSales moduleKey={key} />);
-    add('stock', <ModuleStock moduleKey={key} />);
-    add('inventaire', <ModuleInventaire moduleKey={key} />);
-    add('purchases', <ModulePurchases moduleKey={key} />);
-    add('clients', <ModuleClients moduleKey={key} />);
-    // Les rappels de passage et les envois WhatsApp n'ont de sens que pour une
-    // partie de service : une cafétéria ne rappelle personne pour un lavage.
-    add('messages', <ModuleMessages moduleKey={key} />);
-    add('suppliers', <ModuleSuppliers moduleKey={key} />);
-    add('workers', <ModuleWorkers moduleKey={key} />);
-    add('expenses', <ModuleExpenses moduleKey={key} />);
-    add('caisse', <ModuleCaisse moduleKey={key} />);
-    add('reports', <ModuleReports moduleKey={key} />);
-    add('feedbacks', <ModuleFeedbacks moduleKey={key} />);
-  } else {
-    add('stock', <ModuleStock moduleKey={key} />);
-    add('inventaire', <ModuleInventaire moduleKey={key} />);
-    add('purchases', <ModulePurchases moduleKey={key} />);
-    if (cfg.hasProduction) {
-      add('production', <ModuleProduction moduleKey={key} />);
-      add('comptoir', <ModuleComptoir moduleKey={key} />);
-    }
-    add('pos', <ModulePOS moduleKey={key} />);
-    add('sales', <ModuleSales moduleKey={key} />);
-    add('clients', <ModuleClients moduleKey={key} />);
-    add('suppliers', <ModuleSuppliers moduleKey={key} />);
-    add('workers', <ModuleWorkers moduleKey={key} />);
-    add('expenses', <ModuleExpenses moduleKey={key} />);
-    add('caisse', <ModuleCaisse moduleKey={key} />);
-    add('reports', <ModuleReports moduleKey={key} />);
-    add('feedbacks', <ModuleFeedbacks moduleKey={key} />);
-  }
+  add('pos', <ModulePOS moduleKey={key} />);
+  add('sales', <ModuleSales moduleKey={key} />);
+  add('stock', <ModuleStock moduleKey={key} />);
+  add('inventaire', <ModuleInventaire moduleKey={key} />);
+  add('purchases', <ModulePurchases moduleKey={key} />);
+  add('clients', <ModuleClients moduleKey={key} />);
+  add('suppliers', <ModuleSuppliers moduleKey={key} />);
+  add('workers', <ModuleWorkers moduleKey={key} />);
+  add('expenses', <ModuleExpenses moduleKey={key} />);
+  add('caisse', <ModuleCaisse moduleKey={key} />);
+  add('reports', <ModuleReports moduleKey={key} />);
+  add('feedbacks', <ModuleFeedbacks moduleKey={key} />);
   return routes;
 }
 
@@ -209,9 +178,8 @@ function AdminOnlyRoute({ element }: { element: React.ReactElement }): React.Rea
 
 // ─── Business-part route guard ────────────────────────────────────────────────
 /**
- * Gates a Restaurant / Cafétéria / Lavage / Magasin page. Employees of a part
- * only reach an interface they were granted "voir" on, and never a page of
- * another part. Everyone else (admin) passes through.
+ * Gates a Magasin page. Employees of the part only reach an interface they
+ * were granted "voir" on. Everyone else (admin) passes through.
  */
 function ModuleRouteGuard({
   moduleKey, iface, element,
@@ -420,8 +388,8 @@ function AppContent({
             });
           }
         } else if (userRole === 'module_worker') {
-          // Employee of a business part (Restaurant / Cafétéria / Lavage /
-          // Magasin): their identity, part and grants live in module_workers.
+          // Employee of the Magasin part: their identity, part and grants
+          // live in module_workers.
           const mw = await getMyModuleWorker();
           if (mw) {
             dispatch({
@@ -536,7 +504,7 @@ function AppRoutes({ onLogout }: { onLogout: () => void }) {
         <Route path="/statistics"       element={<ProtectedRoute element={<Statistics />} moduleId="Statistiques" />} />
         <Route path="/reports"          element={<ProtectedRoute element={<Reports />} moduleId="Rapports" />} />
 
-        {/* Business modules (Cafétéria / Lavage & Vidange) */}
+        {/* Partie commerciale : Magasin */}
         {MODULE_ROUTES.map(r => React.createElement(Route, {
           key: r.path,
           path: r.path,

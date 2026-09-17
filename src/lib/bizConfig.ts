@@ -1,8 +1,8 @@
 /**
  * ─── Business Modules Configuration & Types ────────────────────────────────────
- * Self-contained data model for the commerce/production parts of the sidebar:
- * Cafétéria and Lavage & Vidange (the Magasin point-de-vente & ventes screens
- * were folded into the Lavage part; the Restaurant part was removed).
+ * Self-contained data model for the commerce part of the sidebar: le Magasin
+ * (achat, stock et vente de produits). Les parties Restaurant, Cafétéria et
+ * Lavage & Vidange ont été retirées de l'application.
  *
  * These modules live on a dedicated store (`BizContext`, persisted as one JSON
  * row in Supabase), so they never touch the relational fuel-station tables.
@@ -10,10 +10,10 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-export type ModuleKey = 'cafeteria' | 'lavage';
+export type ModuleKey = 'magasin';
 
 /** Keys that existed in older saved states and are migrated away on load. */
-export type LegacyModuleKey = 'restaurant' | 'magasin';
+export type LegacyModuleKey = 'restaurant' | 'cafeteria' | 'lavage';
 
 // ─── Entity collections held per module ────────────────────────────────────────
 export type BizCollection =
@@ -27,17 +27,10 @@ export type BizCollection =
   | 'workers'
   | 'expenses'
   | 'caisse'
-  | 'productions'
-  | 'fiches'
-  | 'comptoir'
   | 'destructions'
-  | 'reparations'
   | 'sessions'
-  | 'payRequests'
   | 'inventaires'
-  | 'roles'
-  | 'messageTemplates'
-  | 'rappels';
+  | 'roles';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -351,6 +344,17 @@ export interface BizDocPayment {
   by?: string;
 }
 
+/** A remise granted on a document: a percentage or a flat amount. */
+export type BizDiscountType = 'percent' | 'amount';
+
+/** Money actually deducted by a remise, clamped to the subtotal. */
+export function discountOf(subtotal: number, type: BizDiscountType | undefined, value: number | undefined): number {
+  const v = Number(value) || 0;
+  if (v <= 0 || subtotal <= 0) return 0;
+  const raw = type === 'percent' ? (subtotal * Math.min(v, 100)) / 100 : v;
+  return Math.max(0, Math.min(subtotal, raw));
+}
+
 export interface BizSale {
   id: string;
   ref: string;
@@ -453,17 +457,6 @@ export interface BizContact {
    * relevé au jour où il est tombé.
    */
   advancePayments?: BizDocPayment[];
-  /**
-   * ─── LE PARC DU CLIENT (Lavage & Vidange) ───────────────────────────────
-   * Un client de lavage revient avec SES voitures — souvent plusieurs (la
-   * sienne, celle de son épouse, l'utilitaire de la société). Les saisir à
-   * chaque passage faisait perdre l'historique du véhicule et obligeait à
-   * retaper la plaque à chaque fois.
-   *
-   * Une fiche d'intervention peut toujours porter un véhicule saisi à la main :
-   * ce champ ne remplace rien, il évite de retaper.
-   */
-  cars?: BizCar[];
 }
 
 export interface BizAcompte { id: string; date: string; amount: number; description?: string; paid: boolean }
@@ -475,11 +468,6 @@ export interface BizWorkerPayment {
   date: string;
   description?: string;
   mode?: string;
-  /** Percentage payroll: the works (vidanges/lavages) settled by this payment. */
-  workIds?: string[];
-  /** Sum of the settled works and the rate applied, for the payslip. */
-  worksTotal?: number;
-  percentage?: number;
   from?: string;
   to?: string;
   /** `jour` payroll: the worked days settled here (so they never reappear). */
@@ -502,19 +490,6 @@ export interface BizWorkerPayment {
   inventaireDeductionValue?: number;
 }
 
-/**
- * Speciality of an employee of the Lavage & Vidange part. It decides which
- * employees are proposed on a « lavage » prestation and which on a
- * « vidange » one — `both` shows up on either.
- */
-export type BizWorkerKind = 'lavage' | 'reparation' | 'both';
-
-export const WORKER_KIND_META: Record<BizWorkerKind, { label: string; short: string }> = {
-  lavage: { label: 'Employé lavage', short: 'Lavage' },
-  reparation: { label: 'Employé vidange', short: 'Vidange' },
-  both: { label: 'Lavage & vidange', short: 'Polyvalent' },
-};
-
 export interface BizWorker {
   id: string;
   /** Supabase auth user id — set once the login account is provisioned. */
@@ -524,14 +499,9 @@ export interface BizWorker {
   cin?: string;
   phone?: string;
   roleName: string;
-  /** Lavage part only: is this a lavage worker, a vidange worker, or both? */
-  workerKind?: BizWorkerKind;
   paid: boolean;                 // reçoit un salaire ?
-  /** `pourcentage` pays a share of every intervention the worker performed. */
-  salaryType: 'jour' | 'mois' | 'pourcentage';
+  salaryType: 'jour' | 'mois';
   salaryAmount: number;
-  /** Share of each intervention total, in % — used when salaryType = 'pourcentage'. */
-  percentage?: number;
   /**
    * Weekdays worked, indexed like `Date.getDay()` (0 = Sunday … 6 = Saturday).
    * Only meaningful when `salaryType = 'jour'`; the missing days are the repos.
@@ -754,257 +724,6 @@ export interface BizSession {
   closedByName?: string;
 }
 
-// ─── Encaissement requests raised by a lavage worker ───────────────────────────
-/** A lavage worker tells the cashier/admin how much a client has to pay. */
-export interface BizPayRequest {
-  id: string;
-  ref: string;
-  clientName: string;
-  car: BizCar;
-  amount: number;
-  description?: string;
-  workerId?: string;
-  workerName: string;
-  status: 'pending' | 'collected' | 'canceled';
-  createdAt: string;
-  collectedAt?: string;
-  collectedBy?: string;
-}
-
-export interface BizCar {
-  /**
-   * Identifiant de la voiture SUR LA FICHE DU CLIENT. Absent sur une voiture
-   * simplement saisie à la main dans une intervention (client de passage, ou
-   * véhicule qu'on ne rattache à personne) : ces deux cas doivent continuer de
-   * fonctionner exactement comme avant.
-   */
-  id?: string;
-  name?: string;
-  marque?: string;
-  color?: string;
-  year?: string;
-  /** Facultative : beaucoup de véhicules passent sans plaque lisible. */
-  immatriculation?: string;
-  description?: string;
-  /**
-   * Dernier kilométrage relevé, en km. Il vit sur la fiche du client et se
-   * corrige à chaque passage : c'est le relevé du jour qui fait foi, jamais
-   * celui d'il y a six mois.
-   */
-  kilometrage?: number;
-  /** Date du relevé de kilométrage ci-dessus, `YYYY-MM-DD`. */
-  kilometrageAt?: string;
-  /**
-   * ─── LE RAPPEL PROPRE À CE VÉHICULE ────────────────────────────────────────
-   * Un délai de rappel PARTICULIER à cette voiture, en jours, qui l'emporte sur
-   * le délai réglé pour toute la partie. Une berline qu'on lave chaque semaine
-   * et un utilitaire qu'on ne revoit qu'au trimestre n'ont pas la même cadence :
-   * ces champs laissent la régler VÉHICULE PAR VÉHICULE.
-   *
-   * Absent (`undefined`) ⇒ le véhicule suit le délai de la partie
-   * (`rappelConfig`). `0` ⇒ ce véhicule ne reçoit PAS de rappel de cette nature.
-   * Le lavage et la vidange se règlent séparément, comme au niveau de la
-   * partie.
-   */
-  rappelLavageDays?: number;
-  rappelReparationDays?: number;
-  createdAt?: string;
-}
-
-/** Étiquette lisible d'un véhicule — « Clio • Renault • 12345-116-31 ». */
-export function carLabel(c: BizCar | undefined | null): string {
-  if (!c) return '';
-  return [c.marque, c.name, c.immatriculation].filter(Boolean).join(' • ');
-}
-
-/** Description complète, telle qu'elle apparaît dans un message au client. */
-export function carFullLabel(c: BizCar | undefined | null): string {
-  if (!c) return '';
-  return [c.marque, c.name, c.color, c.year, c.immatriculation].filter(Boolean).join(' • ');
-}
-
-/** Nature of an intervention: a single kind, or several kinds at once. */
-export type BizRepKind = 'reparation' | 'lavage' | 'mixte';
-
-/**
- * One line of work inside an intervention. A single visit can hold several of
- * them — e.g. a « Lavage complet » *and* a « Changement de plaquettes » — each
- * with its own price and its own employees, so the payroll of a
- * percentage-paid worker is computed on exactly what they did.
- */
-export interface BizPrestation {
-  id: string;
-  kind: 'reparation' | 'lavage';
-  /** Free-text designation, e.g. "Lavage complet intérieur/extérieur". */
-  label: string;
-  amount: number;
-  /** Employees who performed THIS prestation (subset of `BizReparation.workers`). */
-  workerIds: string[];
-}
-
-/** A remise granted on an intervention: a percentage or a flat amount. */
-export type BizDiscountType = 'percent' | 'amount';
-
-export interface BizReparation {
-  id: string;
-  ref: string;
-  /** `mixte` when the intervention holds both lavage and vidange prestations. */
-  kind: BizRepKind;
-  clientId?: string;
-  /** "Client de passage" when no client record was picked. */
-  clientName: string;
-  car: BizCar;
-  /**
-   * Total of the labour lines. Kept in sync with `prestations` (it is their sum)
-   * so every older screen and report keeps working unchanged.
-   */
-  serviceTotal: number;
-  /** Detail of the labour: one line per lavage / vidange performed. */
-  prestations?: BizPrestation[];
-  usedProducts: BizLineItem[];
-  problem?: string;
-  /** Prestations + produits, BEFORE the remise. */
-  subtotal?: number;
-  discountType?: BizDiscountType;
-  /** The percentage (0-100) or the flat amount typed by the user. */
-  discountValue?: number;
-  /** Money actually taken off the subtotal — always in DA. */
-  discountAmount?: number;
-  /** Subtotal − remise. */
-  total: number;
-  paid: number;
-  rest: number;
-  status: 'pending' | 'finalized' | 'canceled';
-  outDate?: string;
-  date: string;
-  workers: string[];
-  createdBy?: string;
-  printedAt?: string;
-  /** Payment already settled to the percentage-paid workers of this job. */
-  payrollSettled?: boolean;
-  /** Les encaissements de cette intervention, dans l'ordre où ils sont tombés. */
-  payments?: BizDocPayment[];
-}
-
-/** Money actually deducted by a remise, clamped to the subtotal. */
-export function discountOf(subtotal: number, type: BizDiscountType | undefined, value: number | undefined): number {
-  const v = Number(value) || 0;
-  if (v <= 0 || subtotal <= 0) return 0;
-  const raw = type === 'percent' ? (subtotal * Math.min(v, 100)) / 100 : v;
-  return Math.max(0, Math.min(subtotal, raw));
-}
-
-/**
- * Prestations of an intervention, rebuilt from the legacy single `serviceTotal`
- * when the record predates the multi-prestation form.
- */
-export function prestationsOf(r: BizReparation): BizPrestation[] {
-  if (r.prestations && r.prestations.length) return r.prestations;
-  if (!r.serviceTotal) return [];
-  return [{
-    id: `${r.id}-legacy`,
-    kind: r.kind === 'mixte' ? 'reparation' : r.kind,
-    label: r.problem || (r.kind === 'lavage' ? 'Lavage' : 'Vidange'),
-    amount: r.serviceTotal,
-    workerIds: r.workers || [],
-  }];
-}
-
-/** Share of one intervention owed to a percentage-paid worker.
- *  Prestation-level assignments narrow it down to what they actually did. */
-export function workerShareOf(r: BizReparation, workerId: string, rate: number): number {
-  if (rate <= 0) return 0;
-  const lines = (r.prestations || []).filter(p => (p.workerIds || []).includes(workerId));
-  // No per-line assignment (legacy record or products-only job) → whole total.
-  if (!lines.length) return (r.total * rate) / 100;
-  return (lines.reduce((s, p) => s + (Number(p.amount) || 0), 0) * rate) / 100;
-}
-
-// ─── Messages aux clients : modèles et rappels ─────────────────────────────────
-/**
- * Un MODÈLE DE MESSAGE enregistré par la station. L'utilisateur en écrit un une
- * fois (« Bonjour {client}, votre {vehicule} est prête… »), le retrouve dans une
- * liste, et peut toujours le retoucher avant l'envoi : le modèle remplit le
- * champ, il ne le verrouille pas.
- *
- * Les jetons reconnus sont ceux de `MESSAGE_TOKENS` ci-dessous. Un jeton inconnu
- * est laissé tel quel plutôt que remplacé par du vide — mieux vaut voir
- * `{truc}` à la relecture que d'envoyer une phrase amputée.
- */
-export interface BizMessageTemplate {
-  id: string;
-  name: string;
-  body: string;
-  /**
-   * `lavage` / `reparation` : modèle proposé en premier pour un rappel de cette
-   * nature. `libre` : modèle généraliste, toujours proposé.
-   */
-  usage?: 'lavage' | 'reparation' | 'libre';
-  createdAt: string;
-  createdBy?: string;
-}
-
-/** Les jetons qu'un modèle peut porter, et ce qu'ils valent à l'envoi. */
-export const MESSAGE_TOKENS: { token: string; label: string }[] = [
-  { token: '{client}',       label: 'Nom du client' },
-  { token: '{vehicule}',     label: 'Marque, modèle et plaque du véhicule' },
-  { token: '{marque}',       label: 'Marque du véhicule' },
-  { token: '{modele}',       label: 'Modèle du véhicule' },
-  { token: '{immatriculation}', label: "Plaque d'immatriculation" },
-  { token: '{kilometrage}',  label: 'Dernier kilométrage relevé' },
-  { token: '{derniere_visite}', label: 'Date du dernier passage' },
-  { token: '{prestation}',   label: 'Nature du dernier passage (lavage / vidange)' },
-  { token: '{station}',      label: 'Nom de la station' },
-  { token: '{telephone}',    label: 'Téléphone de la station' },
-];
-
-/**
- * ─── LE SUIVI D'UN RAPPEL ──────────────────────────────────────────────────────
- *
- * Une alerte de rappel n'est PAS stockée : elle se DÉDUIT à chaque affichage des
- * interventions terminées et des délais réglés (voir `src/lib/rappels.ts`). La
- * stocker obligerait à la recalculer dès qu'un délai change, et une intervention
- * corrigée laisserait une alerte fantôme.
- *
- * Ce qui doit survivre, en revanche, c'est ce que l'utilisateur en a FAIT :
- * marquée lue, ou message parti. Cette collection ne porte que ça — une ligne
- * par alerte traitée, avec un identifiant DÉTERMINISTE
- * (`<intervention>:<nature>:<véhicule>`) pour que deux postes qui traitent la
- * même alerte n'en fassent pas deux lignes.
- */
-export interface BizRappel {
-  /** `${reparationId}:${kind}:${carKey}` — déterministe, jamais tiré au hasard. */
-  id: string;
-  reparationId: string;
-  kind: 'lavage' | 'reparation';
-  /** Identifiant (ou plaque) du véhicule concerné — vide si aucun. */
-  carKey: string;
-  clientId?: string;
-  /** `read` = classée sans envoi. `sent` = un message est parti. */
-  status: 'read' | 'sent';
-  at: string;
-  by?: string;
-  /** Ligne du journal d'envoi correspondante, quand un message est parti. */
-  messageId?: string;
-}
-
-/** Délais de rappel d'une partie — le lavage et la vidange sont indépendants. */
-export interface BizRappelConfig {
-  /** Rappeler un LAVAGE après ce nombre de jours. 0 ⇒ pas de rappel de lavage. */
-  lavageDays: number;
-  /** Rappeler une VIDANGE après ce nombre de jours. 0 ⇒ aucun rappel. */
-  reparationDays: number;
-  /** Coupe tous les rappels sans perdre les délais réglés. */
-  enabled: boolean;
-}
-
-/** Réglage de départ : un lavage tous les mois, une révision tous les six mois. */
-export const DEFAULT_RAPPEL_CONFIG: BizRappelConfig = {
-  lavageDays: 30,
-  reparationDays: 180,
-  enabled: true,
-};
-
 // ─── Inventaire physique d'une partie ──────────────────────────────────────────
 /**
  * Un inventaire, c'est la station qui va COMPTER ce qu'elle a réellement en
@@ -1153,24 +872,14 @@ export interface ModuleState {
   workers: BizWorker[];
   expenses: BizExpense[];
   caisse: BizCaisseTx[];
-  productions: BizProduction[];
-  fiches: BizFiche[];
-  comptoir: BizComptoirItem[];
   destructions: BizDestruction[];
-  reparations: BizReparation[];
   sessions: BizSession[];
-  payRequests: BizPayRequest[];
   /** Inventaires physiques de la partie — comptage, écarts et correction. */
   inventaires: BizInventaire[];
-  /** Modèles de messages enregistrés, réutilisables à l'envoi. */
-  messageTemplates: BizMessageTemplate[];
-  /** Alertes de rappel DÉJÀ traitées (lues ou envoyées) — voir `BizRappel`. */
-  rappels: BizRappel[];
   /**
    * Order of the "accès rapide" tiles of the point de vente: the products that
    * sell the most, pinned by the user so they open the grid. Each entry is a
-   * `posPinKey` — the comptoir keys are name-based because a production run
-   * creates a new row every time.
+   * `posPinKey`.
    */
   posPinned: string[];
   /**
@@ -1183,21 +892,10 @@ export interface ModuleState {
    * la trace de ce qu'il a RÉELLEMENT fait dans `BizPurchase.useAverageCost`.
    */
   avgCostEnabled?: boolean;
-  /**
-   * Délais de rappel de la partie (lavage et vidange, séparément). Absent ⇒
-   * `DEFAULT_RAPPEL_CONFIG`. C'est un réglage SCALAIRE : il n'a pas d'id, donc
-   * il se départage sur son propre horodatage (`rappelConfigUpd` dans
-   * `bizSync.ts`), sinon la copie du serveur l'écrase au prochain démarrage.
-   */
-  rappelConfig?: BizRappelConfig;
 }
 
-/**
- * Stable key of a POS tile, used by the "accès rapide" ordering.
- * Products and fiches keep their id; a comptoir line is keyed by its product
- * name so the pin survives the next production run.
- */
-export function posPinKey(kind: 'comptoir' | 'product' | 'fiche', idOrName: string): string {
+/** Stable key of a POS tile, used by the "accès rapide" ordering. */
+export function posPinKey(kind: 'product', idOrName: string): string {
   return `${kind}:${idOrName}`;
 }
 
@@ -1210,35 +908,18 @@ export interface ModuleConfig {
   label: string;          // section label in sidebar
   short: string;          // short name used in subtitles
   emoji: string;
-  base: string;           // route base, e.g. "/restaurant"
-  productWord: string;    // "Plat", "Produit"…
-  hasProduction: boolean; // production + comptoir + fiches
-  hasComptoir: boolean;
-  isService: boolean;     // lavage & vidange flow
+  base: string;           // route base, e.g. "/magasin"
+  productWord: string;    // "Produit"…
 }
 
 export const MODULES: Record<ModuleKey, ModuleConfig> = {
-  cafeteria: {
-    key: 'cafeteria',
-    label: 'Cafétéria',
-    short: 'Cafétéria',
-    emoji: '☕',
-    base: '/cafeteria',
+  magasin: {
+    key: 'magasin',
+    label: 'Magasin',
+    short: 'Magasin',
+    emoji: '🏪',
+    base: '/magasin',
     productWord: 'Produit',
-    hasProduction: true,
-    hasComptoir: true,
-    isService: false,
-  },
-  lavage: {
-    key: 'lavage',
-    label: 'Lavage & Vidange',
-    short: 'Lavage',
-    emoji: '🧽',
-    base: '/lavage',
-    productWord: 'Produit',
-    hasProduction: false,
-    hasComptoir: false,
-    isService: true,
   },
 };
 
@@ -1267,29 +948,10 @@ export const INTERFACE_ACTIONS = ['voir', 'creer', 'modifier', 'supprimer'] as c
 
 /**
  * Interfaces that actually exist for one part — the permissions editor and the
- * employee sidebar must never offer a screen the part does not have (Lavage has
- * no "Production", Cafétéria has no "Vidanges").
- *
- * The Lavage part also carries the point-de-vente and ventes screens that used
- * to live in the (now removed) Magasin part, and the « Messages clients » screen
- * (rappels de lavage / révision), which only makes sense there.
+ * employee sidebar are built from this list.
  *
  * Mirrors `buildModuleRoutes` in App.tsx.
  */
-export function interfacesForModule(key: ModuleKey): { id: string; label: string }[] {
-  const cfg = MODULES[key];
-  const ids = cfg.isService
-    ? [
-        'reparations', 'encaissements', 'pos', 'sales', 'stock', 'inventaire', 'purchases',
-        'clients', 'messages', 'suppliers', 'workers', 'expenses', 'caisse', 'reports', 'feedbacks',
-      ]
-    : [
-        'stock', 'inventaire', 'purchases',
-        ...(cfg.hasProduction ? ['production', 'comptoir'] : []),
-        'pos', 'sales', 'clients', 'suppliers', 'workers', 'expenses', 'caisse', 'reports',
-        'feedbacks',
-      ];
-  return ids
-    .map(id => MODULE_INTERFACES.find(i => i.id === id))
-    .filter((i): i is { id: string; label: string } => !!i);
+export function interfacesForModule(_key: ModuleKey): { id: string; label: string }[] {
+  return MODULE_INTERFACES;
 }

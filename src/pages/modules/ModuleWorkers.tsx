@@ -8,8 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import { cn, newId, matchesSearch } from '@/src/lib/utils';
 import {
-  ModuleKey, MODULES, BizWorker, BizWorkerPayment, BizReparation, BizWorkerKind,
-  WORKER_KIND_META, INTERFACE_ACTIONS, interfacesForModule, workerShareOf, prestationsOf,
+  ModuleKey, MODULES, BizWorker, BizWorkerPayment,
+  INTERFACE_ACTIONS, interfacesForModule,
 } from '@/src/lib/bizConfig';
 import { chargeableInventairesFor } from '@/src/lib/inventaire';
 import { useBiz } from '@/src/store/BizContext';
@@ -36,7 +36,6 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
   // Tableau par défaut : la paie se lit en colonnes — salaire, acomptes, statut
   // du mois. Les fiches en cartes restent à un clic.
   const [view, setView] = useState<'grid' | 'table'>('table');
-  const [kindFilter, setKindFilter] = useState<'all' | BizWorkerKind>('all');
   const [form, setForm] = useState<BizWorker | null | 'new'>(null);
   const [viewing, setViewing] = useState<BizWorker | null>(null);
   const [perms, setPerms] = useState<BizWorker | null>(null);
@@ -50,15 +49,8 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
-  // The speciality only exists on the Lavage & Vidange part.
-  const hasKinds = cfg.isService;
-  const filtered = workers.filter(w => {
-    const matchQ = matchesSearch(search, w.name, w.roleName, w.phone, w.cin);
-    const kind = w.workerKind || 'both';
-    // A polyvalent employee belongs to both the "lavage" and the "vidange" filters.
-    const matchKind = !hasKinds || kindFilter === 'all' || kind === kindFilter || kind === 'both';
-    return matchQ && matchKind;
-  });
+  const filtered = workers.filter(w =>
+    matchesSearch(search, w.name, w.roleName, w.phone, w.cin));
 
   const del = async () => {
     if (!toDelete) return;
@@ -74,10 +66,8 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
     setToDelete(null);
   };
 
-  // Percentage-paid workers have no fixed salary — their due is computed from
-  // the interventions they performed (see `pendingWorksFor`).
   const totalPayroll = workers
-    .filter(w => w.paid && w.salaryType !== 'pourcentage')
+    .filter(w => w.paid)
     .reduce((s, w) => s + w.salaryAmount, 0);
   const withAccount = workers.filter(w => w.hasAccount && w.authUserId).length;
 
@@ -97,17 +87,6 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
 
       <div className="card-glass p-4 flex flex-wrap items-center gap-3">
         <SearchInput value={search} onChange={setSearch} placeholder="Nom, rôle, téléphone ou CIN…" />
-        {hasKinds && (
-          <div className="flex flex-wrap gap-1.5">
-            {(['all', 'lavage', 'reparation', 'both'] as const).map(k => (
-              <button key={k} onClick={() => setKindFilter(k)}
-                className={cn('px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
-                  kindFilter === k ? 'bg-[#003087] text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}>
-                {k === 'all' ? 'Tous' : WORKER_KIND_META[k].short}
-              </button>
-            ))}
-          </div>
-        )}
         <div className="ml-auto"><ViewToggle view={view} onChange={setView} /></div>
       </div>
 
@@ -121,7 +100,6 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
            payé ce mois-ci. Le menu « … » devient des boutons de ligne. */
         <Table head={<>
           <th className="table-head">Employé</th><th className="table-head">Rôle</th>
-          {hasKinds && <th className="table-head">Spécialité</th>}
           <th className="table-head">Compte</th>
           <th className="table-head text-right">Salaire</th><th className="table-head text-right">Acomptes dus</th>
           <th className="table-head">Ce mois</th><th className="table-head text-right">Actions</th>
@@ -145,13 +123,6 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
                   )}
                 </td>
                 <td className="table-cell">{w.roleName}</td>
-                {hasKinds && (
-                  <td className="table-cell">
-                    <Badge tone={(w.workerKind || 'both') === 'lavage' ? 'info' : (w.workerKind || 'both') === 'reparation' ? 'warning' : 'primary'}>
-                      {WORKER_KIND_META[w.workerKind || 'both'].short}
-                    </Badge>
-                  </td>
-                )}
                 <td className="table-cell">
                   {w.hasAccount && w.authUserId
                     ? <Badge tone="success">Actif</Badge>
@@ -160,9 +131,7 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
                       : <span className="text-slate-400">Aucun</span>}
                 </td>
                 <td className="table-cell tabular-nums text-right">
-                  {w.salaryType === 'pourcentage'
-                    ? <span className="font-bold text-emerald-600">{w.percentage || 0} % des travaux</span>
-                    : w.paid ? <span className="font-bold">{money(w.salaryAmount)}</span> : <span className="text-slate-400">Non salarié</span>}
+                  {w.paid ? <span className="font-bold">{money(w.salaryAmount)}</span> : <span className="text-slate-400">Non salarié</span>}
                 </td>
                 <td className="table-cell tabular-nums text-right">
                   {unpaidAcomptes > 0 ? <span className="font-black text-red-600">{money(unpaidAcomptes)}</span> : <span className="text-slate-400">—</span>}
@@ -278,20 +247,6 @@ export default function ModuleWorkers({ moduleKey }: { moduleKey: ModuleKey }) {
                   <span className="text-[9px] font-bold px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1 italic">
                     <MapIcon className="w-3 h-3" /> {w.roleName}
                   </span>
-                  {hasKinds && (
-                    <span className={cn('text-[9px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 italic',
-                      (w.workerKind || 'both') === 'lavage' ? 'bg-cyan-100 text-cyan-700'
-                        : (w.workerKind || 'both') === 'reparation' ? 'bg-orange-100 text-orange-700'
-                          : 'bg-violet-100 text-violet-700')}>
-                      {(w.workerKind || 'both') === 'lavage' ? '🧽' : (w.workerKind || 'both') === 'reparation' ? '🔧' : '🧽🔧'}
-                      {' '}{WORKER_KIND_META[w.workerKind || 'both'].short}
-                    </span>
-                  )}
-                  {w.salaryType === 'pourcentage' && (
-                    <span className="text-[9px] font-bold px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full italic">
-                      {w.percentage || 0}% des travaux
-                    </span>
-                  )}
                   {w.hasAccount && w.authUserId && (
                     <span className="text-[9px] font-bold px-2.5 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1 italic">
                       <Lock className="w-3 h-3" /> Compte actif
@@ -383,11 +338,9 @@ function WorkerForm({ moduleKey, initial, onClose }: { moduleKey: ModuleKey; ini
   const biz = useBiz(moduleKey);
   const { roles } = biz.state;
   const isEdit = !!initial;
-  // Only the Lavage & Vidange part splits its staff by speciality.
-  const hasKinds = MODULES[moduleKey].isService;
   const [f, setF] = useState<Partial<BizWorker>>(initial || {
-    name: '', birthday: '', cin: '', phone: '', roleName: '', paid: true, salaryType: 'mois', salaryAmount: 0, percentage: 0,
-    workerKind: 'lavage', workDays: DEFAULT_WORK_DAYS, cnasDate: '',
+    name: '', birthday: '', cin: '', phone: '', roleName: '', paid: true, salaryType: 'mois', salaryAmount: 0,
+    workDays: DEFAULT_WORK_DAYS, cnasDate: '',
     hasAccount: false, email: '', username: '', password: '', startDate: new Date().toISOString().split('T')[0],
   });
   const toggleDay = (idx: number) => setF(p => {
@@ -450,9 +403,7 @@ function WorkerForm({ moduleKey, initial, onClose }: { moduleKey: ModuleKey; ini
     const worker: BizWorker = {
       id: workerId, authUserId, name: f.name!.trim(), birthday: f.birthday, cin: f.cin, phone: f.phone,
       roleName: f.roleName!,
-      workerKind: hasKinds ? ((f.workerKind as BizWorkerKind) || 'both') : initial?.workerKind,
       paid: !!f.paid, salaryType: (f.salaryType as any) || 'mois', salaryAmount: Number(f.salaryAmount) || 0,
-      percentage: f.salaryType === 'pourcentage' ? Number(f.percentage) || 0 : undefined,
       workDays: f.salaryType === 'jour' ? (f.workDays && f.workDays.length ? f.workDays : DEFAULT_WORK_DAYS) : initial?.workDays,
       cnasDate: f.cnasDate || undefined,
       hasAccount, email: f.email, username: username || undefined, password: f.password,
@@ -491,36 +442,6 @@ function WorkerForm({ moduleKey, initial, onClose }: { moduleKey: ModuleKey; ini
           </div>
           {showRole && <div className="mt-2"><InlineCreate placeholder="Nouveau rôle" onCreate={n => { biz.add('roles', { id: newId(), name: n }); set('roleName', n); setShowRole(false); }} /></div>}
         </Field>
-        {hasKinds && (
-          <div className="sm:col-span-2 rounded-xl border border-slate-200 p-4"
-            style={{ background: 'linear-gradient(135deg, rgba(6,182,212,0.06), rgba(249,115,22,0.06))' }}>
-            <p className="text-sm font-bold text-[#002d87]">Type d'employé</p>
-            <p className="text-xs text-slate-500 mb-3">
-              Détermine sur quelles prestations cet employé est proposé lors de la création d'une intervention.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(['lavage', 'reparation', 'both'] as const).map(k => {
-                const on = (f.workerKind || 'both') === k;
-                return (
-                  <button key={k} onClick={() => set('workerKind', k)}
-                    className={cn('rounded-xl border-2 px-3 py-3 text-left transition-all',
-                      on ? 'border-[#003087] bg-white shadow-sm' : 'border-slate-200 bg-white/60 hover:border-slate-300')}>
-                    <p className="text-lg leading-none">{k === 'lavage' ? '🧽' : k === 'reparation' ? '🔧' : '🧽🔧'}</p>
-                    <p className={cn('text-xs font-black mt-1.5', on ? 'text-[#003087]' : 'text-slate-600')}>
-                      {WORKER_KIND_META[k].label}
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      {k === 'lavage' ? 'Uniquement les lavages'
-                        : k === 'reparation' ? 'Uniquement les vidanges'
-                          : 'Proposé sur les deux'}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         <div className="sm:col-span-2"><Field label="Date de début de travail"><Input type="date" value={f.startDate || ''} onChange={e => set('startDate', e.target.value)} /></Field></div>
 
         <div className="sm:col-span-2 rounded-xl bg-slate-50 border border-slate-200 p-4">
@@ -535,16 +456,9 @@ function WorkerForm({ moduleKey, initial, onClose }: { moduleKey: ModuleKey; ini
                   <Select value={f.salaryType || 'mois'} onChange={e => set('salaryType', e.target.value)}>
                     <option value="mois">Mensuel</option>
                     <option value="jour">Journalier</option>
-                    <option value="pourcentage">Pourcentage des travaux</option>
                   </Select>
                 </Field>
-                {f.salaryType === 'pourcentage' ? (
-                  <Field label="Pourcentage (%)" hint="Part de chaque intervention réalisée par cet employé.">
-                    <Input type="number" step="0.01" value={f.percentage ?? 0} onChange={e => set('percentage', e.target.value)} />
-                  </Field>
-                ) : (
-                  <Field label={f.salaryType === 'jour' ? 'Montant (DA / jour)' : 'Montant (DA / mois)'}><Input type="number" value={f.salaryAmount ?? 0} onChange={e => set('salaryAmount', e.target.value)} /></Field>
-                )}
+                <Field label={f.salaryType === 'jour' ? 'Montant (DA / jour)' : 'Montant (DA / mois)'}><Input type="number" value={f.salaryAmount ?? 0} onChange={e => set('salaryAmount', e.target.value)} /></Field>
               </div>
               {f.salaryType === 'jour' && (
                 <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -742,12 +656,10 @@ function ViewWorker({ moduleKey, workerId, onClose }: { moduleKey: ModuleKey; wo
   if (!worker) return null;
 
   const salaryLabel = !worker.paid ? '—'
-    : worker.salaryType === 'pourcentage' ? `${worker.percentage || 0} % des travaux`
-      : `${money(worker.salaryAmount)} / ${worker.salaryType === 'jour' ? 'jour' : 'mois'}`;
+    : `${money(worker.salaryAmount)} / ${worker.salaryType === 'jour' ? 'jour' : 'mois'}`;
 
   const info = [
     { label: 'Rôle', value: worker.roleName },
-    ...(worker.workerKind ? [{ label: 'Spécialité', value: WORKER_KIND_META[worker.workerKind].label }] : []),
     { label: 'Téléphone', value: worker.phone || '—' },
     { label: 'CIN', value: worker.cin || '—' },
     { label: 'Naissance', value: worker.birthday ? formatDate(worker.birthday) : '—' },
@@ -778,7 +690,6 @@ function ViewWorker({ moduleKey, workerId, onClose }: { moduleKey: ModuleKey; wo
         // retenue d'inventaire ressemblait à une erreur de saisie.
         breakdown: [
           ...(p.primeAmount ? [{ label: 'Prime', value: `+${money(p.primeAmount)}`, tone: 'green' as const }] : []),
-          ...(p.worksTotal ? [{ label: `Travaux (${p.percentage || 0}%)`, value: money(p.worksTotal) }] : []),
           ...(p.inventaireTotal
             ? [{ label: `Décalage inventaire (${(p.inventaireIds || []).length})`, value: money(p.inventaireTotal), tone: 'slate' as const }]
             : []),
@@ -947,44 +858,9 @@ function AbsenceModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; wo
 
 // ─── Payment ──────────────────────────────────────────────────────────────────
 
-/**
- * Interventions performed by a percentage-paid worker that have NOT been settled
- * yet. A work leaves this list as soon as it is included in a payment, so the
- * same job is never paid twice.
- */
-function pendingWorksFor(worker: BizWorker, reparations: BizReparation[]): BizReparation[] {
-  const settled = new Set(worker.payments.flatMap(p => p.workIds || []));
-  return reparations
-    .filter(r => r.status === 'finalized' && r.workers.includes(worker.id) && !settled.has(r.id))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}
-
-/**
- * Amount of an intervention that counts for one worker: the sum of the
- * prestations assigned to them, or the whole total when the job carries no
- * per-prestation assignment (legacy record, or products-only job).
- */
-function baseFor(r: BizReparation, workerId: string): number {
-  const lines = (r.prestations || []).filter(p => (p.workerIds || []).includes(workerId));
-  return lines.length ? lines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : r.total;
-}
-
-/** Every intervention of this worker, with the payment that settled it (if any). */
-function allWorksFor(worker: BizWorker, reparations: BizReparation[]) {
-  const byWork = new Map<string, BizWorkerPayment>();
-  worker.payments.forEach(p => (p.workIds || []).forEach(id => byWork.set(id, p)));
-  return reparations
-    .filter(r => r.workers.includes(worker.id))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .map(r => ({ work: r, payment: byWork.get(r.id) }));
-}
-
 function PaymentModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; worker: BizWorker; onClose: () => void }) {
   const biz = useBiz(moduleKey);
-  const { reparations, inventaires } = biz.state;
-  const isPercent = worker.salaryType === 'pourcentage';
-  const rate = worker.percentage || 0;
-  const [showWorks, setShowWorks] = useState(false);
+  const { inventaires } = biz.state;
 
   // ── Inventaires opposables à cet employé ────────────────────────────────
   // Uniquement s'il est « concerné par les inventaires ». Un inventaire quitte
@@ -1026,24 +902,6 @@ function PaymentModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; wo
     toast.success(`Sélection enregistrée — ${ids.length} inventaire(s)`);
   };
 
-  // Percentage-paid: the unpaid interventions, normalised for the shared modal.
-  const pendingWorks = useMemo(
-    () => (isPercent ? pendingWorksFor(worker, reparations) : []),
-    [isPercent, worker, reparations]);
-  const works: PayWork[] = useMemo(() => pendingWorks.map(r => {
-    const mine = prestationsOf(r).filter(p => p.workerIds.includes(worker.id));
-    return {
-      id: r.id,
-      label: `${r.ref} — ${r.clientName}`,
-      sublabel: mine.length
-        ? mine.map(p => `${p.kind === 'lavage' ? 'Lavage' : 'Vidange'} : ${p.label}`).join(' · ')
-        : (r.kind === 'lavage' ? 'Lavage' : r.kind === 'reparation' ? 'Vidange' : 'Lavage + Vidange'),
-      date: r.date,
-      base: baseFor(r, worker.id),
-      share: workerShareOf(r, worker.id, rate),
-    };
-  }), [pendingWorks, worker.id, rate]);
-
   // Days / months already settled by earlier payments → never re-listed.
   const paidDays = useMemo(() => worker.payments.flatMap(p => p.paidDays || []), [worker.payments]);
   const paidMonths = useMemo(() => worker.payments.flatMap(p => p.paidMonths || []), [worker.payments]);
@@ -1062,9 +920,6 @@ function PaymentModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; wo
       inventaireDeductionActive: res.inventaireDeductionActive || undefined,
       inventaireDeductionType: res.inventaireDeductionActive ? res.inventaireDeductionType : undefined,
       inventaireDeductionValue: res.inventaireDeductionActive ? res.inventaireDeductionValue : undefined,
-      workIds: isPercent ? res.selectedWorkIds : undefined,
-      worksTotal: isPercent ? res.worksTotal : undefined,
-      percentage: isPercent ? rate : undefined,
       paidDays: worker.salaryType === 'jour' ? res.selectedDays : undefined,
       paidMonths: worker.salaryType === 'mois' ? res.selectedMonths : undefined,
       from: res.selectedDays[0] || res.selectedMonths[0],
@@ -1080,10 +935,6 @@ function PaymentModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; wo
       payments: [payment, ...worker.payments],
     };
     biz.update('workers', updated);
-    if (isPercent) {
-      const settled = new Set(res.selectedWorkIds);
-      pendingWorks.filter(r => settled.has(r.id)).forEach(r => biz.update('reparations', { ...r, payrollSettled: true }));
-    }
     toast.success('Paiement enregistré');
     onClose();
   };
@@ -1095,11 +946,10 @@ function PaymentModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; wo
         worker={{
           name: worker.name, role: worker.roleName,
           salaryType: worker.salaryType, salaryAmount: worker.salaryAmount,
-          percentage: rate, workDays: worker.workDays, startDate: worker.startDate,
+          workDays: worker.workDays, startDate: worker.startDate,
         }}
         acomptes={worker.acomptes.filter(a => !a.paid)}
         absences={worker.absences.filter(a => !a.paid)}
-        works={works}
         inventaires={payInventaires}
         savedInventaireIds={worker.savedInventaireIds}
         onDismissInventaire={dismissInventaire}
@@ -1109,86 +959,8 @@ function PaymentModal({ moduleKey, worker, onClose }: { moduleKey: ModuleKey; wo
         paidMonths={paidMonths}
         history={worker.payments.slice(0, 4).map(p => ({ label: p.period, date: p.date, amount: p.amount }))}
         onConfirm={onConfirm}
-        onShowWorkDetails={isPercent ? () => setShowWorks(true) : undefined}
       />
-      {showWorks && <WorkerWorksModal worker={worker} reparations={reparations} onClose={() => setShowWorks(false)} />}
     </>
-  );
-}
-
-// ─── Détail de tous les travaux d'un employé ───────────────────────────────────
-function WorkerWorksModal({ worker, reparations, onClose }: {
-  worker: BizWorker; reparations: BizReparation[]; onClose: () => void;
-}) {
-  const rate = worker.percentage || 0;
-  const rows = useMemo(() => allWorksFor(worker, reparations), [worker, reparations]);
-  const paidTotal = rows.filter(r => r.payment).reduce((s, r) => s + workerShareOf(r.work, worker.id, rate), 0);
-  const dueTotal = rows.filter(r => !r.payment && r.work.status === 'finalized')
-    .reduce((s, r) => s + workerShareOf(r.work, worker.id, rate), 0);
-
-  return (
-    <Modal open onClose={onClose} icon={Briefcase} size="2xl"
-      title={`Travaux de ${worker.name}`} subtitle={`Paie au pourcentage — ${rate}%`}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl bg-slate-50 p-3 text-center"><p className="text-[10px] uppercase font-bold text-slate-400">Travaux</p><p className="font-black tabular-nums">{rows.length}</p></div>
-          <div className="rounded-xl bg-emerald-50 p-3 text-center"><p className="text-[10px] uppercase font-bold text-slate-400">Déjà payé</p><p className="font-black tabular-nums text-emerald-600 text-sm">{money(paidTotal)}</p></div>
-          <div className="rounded-xl bg-amber-50 p-3 text-center"><p className="text-[10px] uppercase font-bold text-slate-400">Restant dû</p><p className="font-black tabular-nums text-amber-600 text-sm">{money(dueTotal)}</p></div>
-        </div>
-        {rows.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-6">Aucun travail enregistré pour cet employé.</p>
-        ) : (
-          <div className="card-glass overflow-hidden">
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full border-collapse">
-                <thead><tr>
-                  <th className="table-head">Réf</th><th className="table-head">Date</th><th className="table-head">Client</th>
-                  <th className="table-head">Véhicule</th><th className="table-head">Prestations réalisées</th>
-                  <th className="table-head text-right">Total facture</th><th className="table-head text-right">Base</th>
-                  <th className="table-head text-right">Part {rate}%</th><th className="table-head">État</th>
-                </tr></thead>
-                <tbody>
-                  {rows.map(({ work, payment }) => {
-                    const mine = prestationsOf(work).filter(p => p.workerIds.includes(worker.id));
-                    return (
-                      <tr key={work.id}>
-                        <td className="table-cell font-bold">{work.ref}</td>
-                        <td className="table-cell whitespace-nowrap">{formatDate(work.date)}</td>
-                        <td className="table-cell">{work.clientName}</td>
-                        <td className="table-cell text-slate-500">
-                          {[work.car?.marque, work.car?.name, work.car?.immatriculation].filter(Boolean).join(' • ') || '—'}
-                        </td>
-                        <td className="table-cell">
-                          {mine.length ? (
-                            <div className="flex flex-wrap gap-1">
-                              {mine.map(p => (
-                                <span key={p.id} className={cn('badge', p.kind === 'lavage' ? 'badge-info' : 'badge-primary')}>
-                                  {p.kind === 'lavage' ? '🧽' : '🔧'} {p.label} · {money(p.amount)}
-                                </span>
-                              ))}
-                            </div>
-                          ) : <span className="text-slate-400 italic text-xs">Intervention entière</span>}
-                        </td>
-                        <td className="table-cell tabular-nums text-right">{money(work.total)}</td>
-                        <td className="table-cell tabular-nums text-right text-slate-500">{money(baseFor(work, worker.id))}</td>
-                        <td className="table-cell tabular-nums text-right font-bold">{money(workerShareOf(work, worker.id, rate))}</td>
-                        <td className="table-cell">
-                          {payment
-                            ? <span className="badge badge-success">Payé le {formatDate(payment.date)}</span>
-                            : work.status === 'finalized'
-                              ? <span className="badge badge-warning">À payer</span>
-                              : <span className="badge badge-neutral">En attente</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-    </Modal>
   );
 }
 
@@ -1222,10 +994,10 @@ function PrintPaymentsModal({ moduleKey, worker, onClose }: {
         { label: 'Partie', value: cfg.label },
         { label: 'Fonction', value: worker.roleName },
         { label: 'Période', value: `${formatDate(from)} → ${formatDate(to)}` },
-        { label: 'Mode de paie', value: worker.salaryType === 'pourcentage' ? `Pourcentage ${worker.percentage || 0}%` : worker.salaryType },
+        { label: 'Mode de paie', value: worker.salaryType },
       ],
       items: rows.map(p => ({
-        name: `${p.period}${p.description ? ` — ${p.description}` : ''}${p.workIds?.length ? ` (${p.workIds.length} travaux)` : ''}`,
+        name: `${p.period}${p.description ? ` — ${p.description}` : ''}`,
         qty: formatDate(p.date),
         unitPrice: p.amount,
         total: p.amount,

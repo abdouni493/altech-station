@@ -22,10 +22,10 @@ import {
 import { printInvoice, stationFromSettings } from '@/src/pages/modules/_shared';
 
 const KIND_ICON: Record<MovementKind, React.ElementType> = {
-  purchase: ShoppingCart, sale: Receipt, reparation: Wrench, production: Beaker, destruction: Flame,
+  purchase: ShoppingCart, sale: Receipt, destruction: Flame,
 };
 const KIND_TONE: Record<MovementKind, 'success' | 'info' | 'warning' | 'danger' | 'neutral'> = {
-  purchase: 'success', sale: 'info', reparation: 'warning', production: 'neutral', destruction: 'danger',
+  purchase: 'success', sale: 'info', destruction: 'danger',
 };
 
 function Stat({ icon: Icon, label, value, sub, tone }: {

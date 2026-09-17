@@ -52,10 +52,10 @@ export default function ModuleStock({ moduleKey }: { moduleKey: ModuleKey }) {
   const { products, categories, marques, destructions } = biz.state;
 
   /**
-   * Les pièces détachées — références et véhicules compatibles — n'existent que
-   * dans la partie Lavage & Vidange. La Cafétéria garde son écran inchangé.
+   * Les pièces détachées — références et véhicules compatibles — font partie
+   * du catalogue du Magasin.
    */
-  const isLavage = moduleKey === 'lavage';
+  const isLavage = true;
 
   const [tab, setTab] = useState<'catalogue' | 'destructions' | 'drafts'>('catalogue');
   const [search, setSearch] = useState('');

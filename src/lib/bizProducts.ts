@@ -107,10 +107,10 @@ export async function loadBizProducts(): Promise<ProductsLoadResult> {
       if (isMissingTable(error)) return { status: 'missing' };
       return { status: 'error', error: readableError(error) };
     }
-    const out: Record<ModuleKey, BizProduct[]> = { cafeteria: [], lavage: [] };
+    const out: Record<ModuleKey, BizProduct[]> = { magasin: [] };
     for (const row of (data || []) as BizProductRow[]) {
       const key = row.module_key as ModuleKey;
-      if (key !== 'cafeteria' && key !== 'lavage') continue;
+      if (key !== 'magasin') continue;
       const product = rowToProduct(row);
       if (product) out[key].push(product);
     }

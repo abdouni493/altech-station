@@ -104,7 +104,7 @@ const appBank = {
     { id: 'c1', date: '2026-08-02T08:00:00.000Z', kind: 'BRIGADE', amount: 20000, accountTo: CAISSE_ID, part: 'carburant', refType: 'brigade', refId: 'br1' },
     // Réglés depuis la BANQUE : le compte baisse, la caisse ne bouge pas.
     { id: 'b1', date: '2026-08-03T10:00:00.000Z', kind: 'PURCHASE', amount: 30000, accountFrom: 'B1', part: 'carburant', refType: 'purchase', refId: 'p1' },
-    { id: 'b2', date: '2026-08-04T10:00:00.000Z', kind: 'EXPENSE', amount: 4000, accountFrom: 'B1', part: 'cafeteria', refType: 'biz_expense', refId: 'be1' },
+    { id: 'b2', date: '2026-08-04T10:00:00.000Z', kind: 'EXPENSE', amount: 4000, accountFrom: 'B1', part: 'magasin', refType: 'biz_expense', refId: 'be1' },
     // Un encaissement TPE arrive en banque, pas dans le tiroir.
     { id: 'b3', date: '2026-08-05T10:00:00.000Z', kind: 'TPE', amount: 6000, accountTo: 'B1', part: 'carburant', refType: 'brigade', refId: 'br1' },
     // Virement entre deux tiroirs : lu depuis le tiroir SOURCE, celui que la
@@ -129,9 +129,9 @@ check('le virement entre tiroirs est marqué « interne »', internalRows.length
 check('son montant reste lisible', internalRows[0]?.gross, 5000);
 // … mais la caisse qui donne s'est bien vidée, et celle qui reçoit remplie.
 const financePart = rb.partBalances.find(p => p.key === 'systeme')!;
-const cafeteriaPart = rb.partBalances.find(p => p.key === 'cafeteria')!;
+const magasinPart = rb.partBalances.find(p => p.key === 'magasin')!;
 check('sortie pour la caisse source', financePart.outflow, 5000);
-check('entrée pour la caisse d\'arrivée', cafeteriaPart.inflow, 5000);
+check('entrée pour la caisse d\'arrivée', magasinPart.inflow, 5000);
 const bankRows = rb.movements.filter(m => m.bank);
 check('achat, dépense et TPE sont marqués « banque »', bankRows.length, 3);
 check('leur montant reste lisible', bankRows.reduce((s, m) => s + m.gross, 0), 40000);

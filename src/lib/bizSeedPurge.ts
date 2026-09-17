@@ -222,7 +222,6 @@ export function relinkOrphanRefs(mod: any): void {
   };
 
   const products: any[] = Array.isArray(mod.products) ? mod.products : [];
-  const fiches: any[] = Array.isArray(mod.fiches) ? mod.fiches : [];
-  relink('categories', 'categorie', [...products, ...fiches], 'categoryId', 'categoryName');
+  relink('categories', 'categorie', products, 'categoryId', 'categoryName');
   relink('marques', 'marque', products, 'marqueId', 'marqueName');
 }

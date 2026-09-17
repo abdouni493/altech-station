@@ -18,8 +18,7 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 import {
-  ModuleState, ModuleKey, MODULES, isReversedSale, prestationsOf,
-} from './bizConfig';
+  ModuleState, ModuleKey, MODULES, isReversedSale, } from './bizConfig';
 import { makeCostResolver, appExpensesOfPart } from './bizReporting';
 import { within } from './period';
 import { computeCarburantSales } from './carburantSales';
@@ -174,26 +173,6 @@ export interface DeadStockRow {
   raw?: boolean;
 }
 
-export interface ProductionAnalytics {
-  name: string;
-  unit?: string;
-  runs: number;
-  produced: number;
-  cost: number;
-  value: number;
-  costPerUnit: number;
-  lossQty: number;
-  lossValue: number;
-  sentToComptoir: number;
-  /** Ventes du même produit sur la période (comptoir / vente directe). */
-  soldQty: number;
-  soldRevenue: number;
-  soldGain: number;
-  /** produced − sold : ce qui reste sur les bras. */
-  unsold: number;
-  points: SeriesPoint[];
-}
-
 export interface CategoryAnalytics {
   name: string;
   qty: number;
@@ -213,7 +192,6 @@ export interface PartAnalytics {
   granularity: Granularity;
   points: TimePoint[];
   products: ProductAnalytics[];
-  productions: ProductionAnalytics[];
   categories: CategoryAnalytics[];
   /** Ce qui se vend le mieux (chiffre d'affaires décroissant). */
   best: ProductAnalytics[];
@@ -336,7 +314,6 @@ export function computeModuleAnalytics(
 
   const acc = new Map<string, Acc>();
   const sales = st.sales.filter(s => within(s.date, from, to) && !isReversedSale(s));
-  const reps = (st.reparations || []).filter(r => within(r.date, from, to));
 
   // ── Ventes du point de vente ──
   sales.forEach(s => {
@@ -355,35 +332,6 @@ export function computeModuleAnalytics(
       }));
       record(a, s.date, k, it.qty || 0, revenue, cost);
       bump(s.date, { revenue, cost, gain: revenue - cost, qty: it.qty || 0, count: 1 });
-    });
-  });
-
-  // ── Interventions : les produits consommés, puis la main-d'œuvre ──
-  reps.forEach(r => {
-    const k = keyOfDate(r.date, g);
-    (r.usedProducts || []).forEach(it => {
-      const revenue = it.total ?? it.qty * it.unitPrice;
-      const cost = unitCostOf(it) * (it.qty || 0);
-      const a = touch(acc, it.productId || it.productName, () => ({
-        id: it.productId || it.productName,
-        name: it.productName,
-        code: barcodeOf(it),
-        category: categoryOf(it),
-        unit: unitOf(it),
-        kind: kindOf(it) as ProductKind,
-      }));
-      record(a, r.date, k, it.qty || 0, revenue, cost);
-      bump(r.date, { revenue, cost, gain: revenue - cost, qty: it.qty || 0, count: 1 });
-    });
-    // Une prestation n'a pas de marchandise derrière elle : elle est marge pure.
-    prestationsOf(r).forEach(p => {
-      const name = p.kind === 'lavage' ? 'Prestations — Lavage' : 'Prestations — Vidange';
-      const a = touch(acc, name, () => ({
-        id: name, name, category: 'Main-d\'œuvre', unit: 'prestation', kind: 'prestation' as ProductKind,
-      }));
-      const amount = Number(p.amount) || 0;
-      record(a, r.date, k, 1, amount, 0);
-      bump(r.date, { revenue: amount, gain: amount, qty: 1, count: 1 });
     });
   });
 
@@ -432,54 +380,12 @@ export function computeModuleAnalytics(
     }))
     .sort((a, b) => b.stockValue - a.stockValue);
 
-  // ── Productions de la période ──
-  const prodAcc = new Map<string, ProductionAnalytics & { byKey: Map<string, SeriesPoint> }>();
-  (st.productions || []).filter(p => within(p.date, from, to)).forEach(p => {
-    const k = keyOfDate(p.date, g);
-    let row = prodAcc.get(p.name);
-    if (!row) {
-      row = {
-        name: p.name, unit: p.unit, runs: 0, produced: 0, cost: 0, value: 0, costPerUnit: 0,
-        lossQty: 0, lossValue: 0, sentToComptoir: 0,
-        soldQty: 0, soldRevenue: 0, soldGain: 0, unsold: 0,
-        points: [], byKey: new Map(emptySeries(buckets).map(x => [x.key, x])),
-      };
-      prodAcc.set(p.name, row);
-    }
-    row.runs += 1;
-    row.produced += p.outputQuantity || 0;
-    row.cost += p.totalCost || 0;
-    row.value += p.totalValue || 0;
-    row.lossQty += p.lossQuantity || 0;
-    row.lossValue += p.lossValue || 0;
-    row.sentToComptoir += p.sentToComptoir || 0;
-    const pt = k ? row.byKey.get(k) : undefined;
-    if (pt) { pt.qty += p.outputQuantity || 0; pt.revenue += p.totalValue || 0; pt.cost += p.totalCost || 0; pt.count += 1; }
-  });
-  const productions: ProductionAnalytics[] = Array.from(prodAcc.values()).map(row => {
-    const sold = products.find(p => p.name === row.name);
-    const points = buckets.map(b => {
-      const pt = row.byKey.get(b.key)!;
-      return { ...pt, gain: pt.revenue - pt.cost };
-    });
-    const { byKey, ...rest } = row;
-    return {
-      ...rest,
-      points,
-      costPerUnit: row.produced > 0 ? row.cost / row.produced : 0,
-      soldQty: sold?.qty || 0,
-      soldRevenue: sold?.revenue || 0,
-      soldGain: sold?.gain || 0,
-      unsold: (row.produced || 0) - (sold?.qty || 0),
-    };
-  }).sort((a, b) => b.produced - a.produced);
-
   const categories = groupByCategory(products);
   const totals = totalsOf(points, products);
 
   return finalize({
     key, label: cfg.label, emoji: cfg.emoji, from, to, granularity: g,
-    points, products, productions, categories, dead, totals,
+    points, products, categories, dead, totals,
   });
 }
 
@@ -574,7 +480,7 @@ export function computeCarburantAnalytics(
 
   return finalize({
     key: 'carburant', label: 'Carburant', emoji: '⛽', from, to, granularity: g,
-    points, products: list, productions: [],
+    points, products: list,
     categories: groupByCategory(list), dead,
     totals: totalsOf(points, list),
   });
@@ -637,7 +543,6 @@ export function consolidateAnalytics(parts: PartAnalytics[], from: string, to: s
   return finalize({
     key: 'global', label: 'Toutes les activités', emoji: '🏢', from, to, granularity,
     points, products,
-    productions: parts.flatMap(p => p.productions),
     categories: groupByCategory(products),
     dead,
     totals: totalsOf(points, products),

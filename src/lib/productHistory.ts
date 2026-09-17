@@ -16,18 +16,16 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 import {
-  ModuleState, BizProduct, BizPurchase, BizSale, BizReparation,
-  isReversedSale, prestationsOf, discountOf,
+  ModuleState, BizProduct, BizPurchase, BizSale,
+  isReversedSale,
 } from './bizConfig';
 import { makeCostResolver } from './bizReporting';
 
-export type MovementKind = 'purchase' | 'sale' | 'reparation' | 'production' | 'destruction';
+export type MovementKind = 'purchase' | 'sale' | 'destruction';
 
 export const MOVEMENT_LABEL: Record<MovementKind, string> = {
   purchase: 'Achat',
   sale: 'Vente',
-  reparation: 'Intervention',
-  production: 'Production',
   destruction: 'Destruction',
 };
 
@@ -43,7 +41,7 @@ export interface DocumentLine {
 
 /** Un bon d'achat ou un bon de vente, tel qu'il s'ouvre en détail. */
 export interface ProductDocument {
-  kind: 'purchase' | 'sale' | 'reparation';
+  kind: 'purchase' | 'sale';
   title: string;
   ref: string;
   date: string;
@@ -176,39 +174,6 @@ function saleDoc(s: BizSale, target: BizProduct): ProductDocument {
   };
 }
 
-function reparationDoc(r: BizReparation, target: BizProduct): ProductDocument {
-  const prestations = prestationsOf(r).map(p => ({
-    name: `${p.kind === 'lavage' ? 'Lavage' : 'Vidange'} — ${p.label}`,
-    qty: 1, unitPrice: num(p.amount), total: num(p.amount), target: false,
-  }));
-  const products = (r.usedProducts || []).map(it => ({
-    name: it.productName,
-    qty: num(it.qty),
-    unitPrice: num(it.unitPrice),
-    total: num(it.total ?? it.qty * it.unitPrice),
-    target: isTarget(it, target),
-  }));
-  const subtotal = num(r.subtotal) || [...prestations, ...products].reduce((s, l) => s + l.total, 0);
-  return {
-    kind: 'reparation',
-    title: r.kind === 'lavage' ? 'Bon de lavage' : r.kind === 'reparation' ? 'Bon de vidange' : 'Bon lavage + vidange',
-    ref: r.ref,
-    date: r.date,
-    partyLabel: 'Client',
-    partyName: r.clientName || 'Client de passage',
-    lines: [...prestations, ...products],
-    subtotal,
-    discount: num(r.discountAmount) || discountOf(subtotal, r.discountType, r.discountValue),
-    total: num(r.total),
-    paid: num(r.paid),
-    rest: num(r.rest),
-    status: r.status,
-    createdBy: r.createdBy,
-    car: [r.car?.marque, r.car?.name, r.car?.immatriculation].filter(Boolean).join(' · ') || undefined,
-    note: r.problem,
-  };
-}
-
 /**
  * Reconstitue l'histoire complète d'un produit à partir de l'état de sa partie.
  * Les ventes ANNULÉES (retournées / échangées) apparaissent, barrées : la
@@ -270,53 +235,6 @@ export function computeProductHistory(st: ModuleState, product: BizProduct): Pro
     });
   });
 
-  // ── Interventions (lavage / vidange) ──
-  (st.reparations || []).forEach(r => {
-    (r.usedProducts || []).forEach((it, i) => {
-      if (!isTarget(it, product)) return;
-      const qty = num(it.qty);
-      const total = num(it.total ?? it.qty * it.unitPrice);
-      const unitCost = unitCostOf(it);
-      movements.push({
-        id: `rep-${r.id}-${i}`,
-        kind: 'reparation',
-        ref: r.ref,
-        date: r.date,
-        party: r.clientName || 'Client de passage',
-        direction: 'out',
-        qty,
-        unitPrice: num(it.unitPrice),
-        total,
-        unitCost,
-        gain: total - unitCost * qty,
-        status: r.status,
-        doc: reparationDoc(r, product),
-      });
-    });
-  });
-
-  // ── Consommations en production ──
-  (st.productions || []).forEach(p => {
-    (p.ingredients || []).forEach((ing, i) => {
-      if (ing.productId !== product.id && ing.productName !== product.name) return;
-      movements.push({
-        id: `prd-${p.id}-${i}`,
-        kind: 'production',
-        ref: p.name,
-        date: p.date,
-        party: p.createdBy || 'Production',
-        direction: 'out',
-        qty: num(ing.quantityUsed),
-        unitPrice: num(ing.unitCost),
-        total: num(ing.lineCost),
-        unitCost: num(ing.unitCost),
-        gain: 0,
-        note: `Ingrédient de « ${p.name} » — ${num(p.outputQuantity)} ${p.unit || ''} produits`.trim(),
-        doc: null,
-      });
-    });
-  });
-
   // ── Destructions ──
   (st.destructions || []).forEach(d => {
     if (d.productId !== product.id && d.productName !== product.name) return;
@@ -343,9 +261,9 @@ export function computeProductHistory(st: ModuleState, product: BizProduct): Pro
 
   // ── Totaux ──
   const purchases = movements.filter(m => m.kind === 'purchase');
-  const sales = movements.filter(m => (m.kind === 'sale' || m.kind === 'reparation') && !m.canceled);
+  const sales = movements.filter(m => m.kind === 'sale' && !m.canceled);
   const destroyed = movements.filter(m => m.kind === 'destruction' && !m.canceled);
-  const consumed = movements.filter(m => m.kind === 'production');
+  const consumed: ProductMovement[] = [];
 
   const purchasedQty = purchases.reduce((s, m) => s + m.qty, 0);
   const purchasedValue = purchases.reduce((s, m) => s + m.total, 0);

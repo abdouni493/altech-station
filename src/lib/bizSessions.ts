@@ -126,10 +126,10 @@ export async function loadBizSessions(): Promise<Record<ModuleKey, BizSession[]>
       if (!isMissingTable(error)) console.warn('[biz_sessions] load', error.message);
       return null;
     }
-    const out: Record<ModuleKey, BizSession[]> = { cafeteria: [], lavage: [] };
+    const out: Record<ModuleKey, BizSession[]> = { magasin: [] };
     ((data || []) as BizSessionRow[]).forEach(r => {
       const key = r.module_key as ModuleKey;
-      if (key === 'cafeteria' || key === 'lavage') out[key].push(rowToSession(r));
+      if (key === 'magasin') out[key].push(rowToSession(r));
     });
     return out;
   } catch {

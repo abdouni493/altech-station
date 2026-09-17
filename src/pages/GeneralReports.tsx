@@ -56,12 +56,11 @@ const SECTIONS: { id: ActiveKey; label: string; icon: React.ElementType; hint: s
   { id: 'employes', label: 'Employés & Personnel', icon: UsersRound, hint: 'Tous les employés, en détail' },
   { id: 'tresorerie', label: 'Caisse & Banques', icon: PiggyBank, hint: 'Trésorerie et journal complet' },
   { id: 'carburant', label: 'Carburant', icon: Fuel, hint: 'Rapport détaillé' },
-  { id: 'cafeteria', label: 'Cafétéria', icon: Coffee, hint: 'Rapport détaillé' },
-  { id: 'lavage', label: 'Lavage & Vidange', icon: Wrench, hint: 'Rapport détaillé' },
+  { id: 'magasin', label: 'Magasin', icon: Store, hint: 'Rapport détaillé' },
 ];
 
 /** Sections that are a per-activity `PartReport` (the others have their own view). */
-const PART_SECTIONS: ActiveKey[] = ['carburant', 'cafeteria', 'lavage'];
+const PART_SECTIONS: ActiveKey[] = ['carburant', 'magasin'];
 
 // ─── Card drill-downs ─────────────────────────────────────────────────────────
 /**
@@ -102,8 +101,7 @@ export default function GeneralReports() {
   const biz = useBizAll();
   const app = useAppState();
   const dispatch = useAppDispatch();
-  const cafeteriaBiz = useBiz('cafeteria');
-  const lavageBiz = useBiz('lavage');
+  const magasinBiz = useBiz('magasin');
   const settings = app.settings;
   const globalFicheRef = useRef<HTMLDivElement>(null);
   const moduleFicheRef = useRef<HTMLDivElement>(null);
@@ -124,18 +122,17 @@ export default function GeneralReports() {
   /** Réglages de zakât — conservés sur ce poste d'une session à l'autre. */
   const [zakatConfig, setZakatConfig] = useState<ZakatConfig>(() => loadZakatConfig());
 
-  const reports: Record<'carburant' | 'cafeteria' | 'lavage', PartReport> = useMemo(() => ({
+  const reports: Record<'carburant' | 'magasin', PartReport> = useMemo(() => ({
     carburant: computeCarburantReport(app, range.from, range.to),
-    // Le grand livre est passé aux parties commerciales : sans lui, leur caisse
-    // ignorait les virements partis de leur coffre vers la banque. Les dépenses
+    // Le grand livre est passé à la partie commerciale : sans lui, sa caisse
+    // ignorait les virements partis de son coffre vers la banque. Les dépenses
     // de la station, elles, sont réparties selon l'activité qui les supporte —
-    // sans quoi une dépense de la Cafétéria pesait sur le Carburant.
-    cafeteria: computeModuleReport(biz.cafeteria, 'cafeteria', range.from, range.to, app.treasuryTransactions, app.expenses),
-    lavage: computeModuleReport(biz.lavage, 'lavage', range.from, range.to, app.treasuryTransactions, app.expenses),
+    // sans quoi une dépense du Magasin pesait sur le Carburant.
+    magasin: computeModuleReport(biz.magasin, 'magasin', range.from, range.to, app.treasuryTransactions, app.expenses),
   }), [biz, app, range]);
 
   const global: GlobalReport = useMemo(
-    () => consolidate([reports.carburant, reports.cafeteria, reports.lavage], range.from, range.to),
+    () => consolidate([reports.carburant, reports.magasin], range.from, range.to),
     [reports, range],
   );
 
@@ -154,8 +151,7 @@ export default function GeneralReports() {
   // Chaque inventaire porte déjà son rapport d'écarts figé : on ne fait que les
   // rassembler, pour que cet écran ne puisse pas contredire celui de la partie.
   const inventaireParts = useMemo(() => [
-    summarizeInventaires(biz.cafeteria, 'cafeteria', MODULES.cafeteria.label, MODULES.cafeteria.emoji),
-    summarizeInventaires(biz.lavage, 'lavage', MODULES.lavage.label, MODULES.lavage.emoji),
+    summarizeInventaires(biz.magasin, 'magasin', MODULES.magasin.label, MODULES.magasin.emoji),
   ], [biz]);
   const inventaireLosses = useMemo(() => collectLosses(inventaireParts), [inventaireParts]);
   const inventaireLossTotal = useMemo(
@@ -172,8 +168,7 @@ export default function GeneralReports() {
     const g = grain || pickGranularity(range.from, range.to);
     const parts = [
       computeCarburantAnalytics(app, range.from, range.to, g),
-      computeModuleAnalytics(biz.cafeteria, 'cafeteria', range.from, range.to, g, app.expenses),
-      computeModuleAnalytics(biz.lavage, 'lavage', range.from, range.to, g, app.expenses),
+      computeModuleAnalytics(biz.magasin, 'magasin', range.from, range.to, g, app.expenses),
     ];
     return { parts, global: consolidateAnalytics(parts, range.from, range.to, g) };
   }, [app, biz, range, grain]);
@@ -183,7 +178,7 @@ export default function GeneralReports() {
     caisse: workingCapital.cashTotal,
     banques: workingCapital.bankTotal,
     stock: stockValuation.parts.map(p => ({
-      key: p.key as 'carburant' | 'cafeteria' | 'lavage',
+      key: p.key as 'carburant' | 'magasin',
       label: p.label, emoji: p.emoji, buyValue: p.buyValue, sellValue: p.sellValue,
     })),
     creances: workingCapital.receivablesTotal,
@@ -254,7 +249,7 @@ export default function GeneralReports() {
   // the user can drill in and remove an entry (a sale, an expense, a product…);
   // derived rows (bénéfice net, alertes) are shown read-only.
   const cardDetails = useMemo<Record<CardKey, CardDetail>>(() => {
-    const bizOf = (k: 'cafeteria' | 'lavage') => (k === 'cafeteria' ? cafeteriaBiz : lavageBiz);
+    const bizOf = (_k: 'magasin') => magasinBiz;
     /**
      * Supprimer une dépense emporte la ligne de trésorerie qu'elle avait
      * écrite : sans elle, le compte débité resterait amputé d'un argent que
@@ -266,15 +261,15 @@ export default function GeneralReports() {
         .forEach((t: any) => dispatch({ type: 'DELETE_TREASURY_TX', payload: t.id }));
       dispatch({ type: 'DELETE_EXPENSE', payload: id });
     };
-    const deleteBizExpense = (k: 'cafeteria' | 'lavage', id: string) => {
+    const deleteBizExpense = (k: 'magasin', id: string) => {
       removeBizExpenseLedger(dispatch, app.treasuryTransactions, id);
       bizOf(k).remove('expenses', id);
     };
-    const stateOf = (k: 'cafeteria' | 'lavage') => (k === 'cafeteria' ? biz.cafeteria : biz.lavage);
+    const stateOf = (_k: 'magasin') => biz.magasin;
     const clientName = (id?: string) => app.clients?.find((c: any) => c.id === id)?.name;
     const byDateDesc = (a: DetailRow, b: DetailRow) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
 
-    // ── Ventes totales — brigades + magasin (carburant) + biz sales/reparations ──
+    // ── Ventes totales — brigades + magasin (carburant) + ventes magasin ──
     // La vente de carburant, c'est la BRIGADE. Cette liste lisait `fuelSales`,
     // une table que plus aucun écran n'alimente : le carburant y pesait zéro,
     // alors qu'il est de loin la première recette de la station.
@@ -299,17 +294,14 @@ export default function GeneralReports() {
       onDelete: () => dispatch({ type: 'DELETE_SHOP_SALE', payload: s.id }),
       confirmMessage: `Supprimer cette vente magasin de ${money(s.total || 0)} ?`,
     }));
-    // Supprimer une vente ou une intervention depuis ce rapport fait le MÊME
-    // retour de marchandise que l'écran d'origine : les articles vendus et les
-    // pièces posées reviennent en stock avant que la ligne ne disparaisse.
-    (['cafeteria', 'lavage'] as const).forEach(k => reports[k].sales.forEach(s => {
-      const isRep = s.kind !== 'Vente';
+    // Supprimer une vente depuis ce rapport fait le MÊME retour de marchandise
+    // que l'écran d'origine : les articles vendus reviennent en stock avant que
+    // la ligne ne disparaisse.
+    (['magasin'] as const).forEach(k => reports[k].sales.forEach(s => {
       const api = bizOf(k);
       const st = stateOf(k);
-      const lines: BizLineItem[] = isRep
-        ? (st.reparations.find(r => r.id === s.id)?.usedProducts || [])
-        : (st.sales.find(x => x.id === s.id)?.items || []);
-      const reversed = !isRep && !!st.sales.find(x => x.id === s.id && isReversedSale(x));
+      const lines: BizLineItem[] = st.sales.find(x => x.id === s.id)?.items || [];
+      const reversed = !!st.sales.find(x => x.id === s.id && isReversedSale(x));
       const impact = reversed ? '' : describeRestock(st, lines);
       salesRows.push({
         id: `${k}-${s.id}`, date: s.date,
@@ -317,7 +309,7 @@ export default function GeneralReports() {
         sub: s.client || 'Comptoir', amount: s.total, amountTone: 'green',
         onDelete: () => {
           if (!reversed) applyRestock(api, restockPlan(st, lines));
-          api.remove(isRep ? 'reparations' : 'sales', s.id);
+          api.remove('sales', s.id);
         },
         confirmMessage: `Supprimer « ${s.ref || s.kind} » (${money(s.total)}) ?\n\n`
           + (reversed
@@ -331,7 +323,7 @@ export default function GeneralReports() {
     // La marchandise est revenue en stock : ces ventes ne comptent plus dans le CA
     // ni dans les gains. On les liste à part pour que l'écart se lise noir sur blanc.
     const returnRows: DetailRow[] = [];
-    (['cafeteria', 'lavage'] as const).forEach(k => reports[k].returns.forEach(rt => returnRows.push({
+    (['magasin'] as const).forEach(k => reports[k].returns.forEach(rt => returnRows.push({
       id: `${k}-ret-${rt.id}`, date: rt.date,
       label: `${reports[k].emoji} ${rt.kind} · ${rt.ref}`,
       sub: [
@@ -367,7 +359,7 @@ export default function GeneralReports() {
       id: `carb-${e.kind}-${e.id}`, date: e.date, label: `⛽ ${e.kind} — ${e.label}`, sub: e.description,
       amount: e.amount, amountTone: 'amber', badge: { text: e.kind, tone: 'info' },
     }));
-    (['cafeteria', 'lavage'] as const).forEach(k => reports[k].expenses.forEach(e => {
+    (['magasin'] as const).forEach(k => reports[k].expenses.forEach(e => {
       if (e.kind === 'Dépense') expenseRows.push({
         id: `${k}-${e.id}`, date: e.date, label: `${reports[k].emoji} ${e.label}`, sub: e.description, amount: e.amount, amountTone: 'red',
         badge: payBadge(e),
@@ -393,14 +385,13 @@ export default function GeneralReports() {
       id: p.key, label: `${p.emoji} ${p.label}`,
       sub: `Ventes ${money(p.salesTotal)} − coût marchandises ${money(p.cogs)} = marge ${money(p.grossMargin)}`
         + ` − charges ${money(p.expensesTotal + p.salariesPaid)}`
-        + (p.destroyedValue > 0 ? ` − destructions ${money(p.destroyedValue)}` : '')
-        + (p.lossValue > 0 ? ` − pertes ${money(p.lossValue)}` : ''),
+        + (p.destroyedValue > 0 ? ` − destructions ${money(p.destroyedValue)}` : ''),
       amount: p.netGain, amountTone: p.netGain >= 0 ? 'green' : 'red',
     }));
 
     // ── Destructions — marchandise perdue (stock + comptoir), avec son détail ──
     const destructionRows: DetailRow[] = [];
-    (['cafeteria', 'lavage'] as const).forEach(k => reports[k].destructions.forEach(d => destructionRows.push({
+    (['magasin'] as const).forEach(k => reports[k].destructions.forEach(d => destructionRows.push({
       id: `${k}-${d.id}`, date: d.date,
       label: `${reports[k].emoji} ${d.name}`,
       sub: [
@@ -433,7 +424,7 @@ export default function GeneralReports() {
         confirmMessage: `Supprimer le produit « ${l.name} » ? Il disparaîtra de l'inventaire.`,
       });
     });
-    (['cafeteria', 'lavage'] as const).forEach(k => (stateOf(k).products || []).forEach((p: any) => stockRows.push({
+    (['magasin'] as const).forEach(k => (stateOf(k).products || []).forEach((p: any) => stockRows.push({
       id: `${k}-${p.id}`, label: `${reports[k].emoji} ${p.name}`,
       sub: `${(p.currentQty || 0).toLocaleString('fr-FR')} ${p.unit || ''} × ${money(p.purchasePrice || 0)}`,
       amount: (p.currentQty || 0) * (p.purchasePrice || 0), amountTone: 'blue',
@@ -479,7 +470,6 @@ export default function GeneralReports() {
       label: `${w.partEmoji} ${w.name}`,
       sub: [
         w.role,
-        w.speciality,
         `salaire ${money(w.salaryAmount)}/${w.salaryType}`,
         `versé ${money(w.paymentsTotal)}`,
         w.acomptesTotal ? `acomptes ${money(w.acomptesTotal)}` : undefined,
@@ -488,7 +478,7 @@ export default function GeneralReports() {
       badge: w.hasAccount && w.accountActive
         ? { text: 'Compte actif', tone: 'success' as const }
         : { text: w.partLabel, tone: 'info' as const },
-      amount: w.dueNow, amountTone: w.dueNow > 0 ? 'red' : 'slate',
+      amount: 0, amountTone: 'slate',
     }));
 
     // ── Salaires versés — chaque paiement, employé par employé ──
@@ -517,21 +507,6 @@ export default function GeneralReports() {
       badge: { text: b.closed ? 'Clôturée' : 'En cours', tone: b.closed ? 'success' : 'warning' },
       amount: b.revenue, amountTone: 'green',
     }));
-
-    // ── Travaux lavage / vidange + sessions cafétéria ──
-    const workRows: DetailRow[] = [];
-    reports.lavage.sales.filter(s => s.kind !== 'Vente').forEach(s => workRows.push({
-      id: `work-${s.id}`, date: s.date,
-      label: `🔧 ${s.kind} · ${s.ref}`, sub: s.client || 'Comptoir',
-      badge: s.rest > 0 ? { text: `reste ${money(s.rest)}`, tone: 'warning' } : { text: 'Payé', tone: 'success' },
-      amount: s.total, amountTone: 'green',
-    }));
-    reports.cafeteria.sales.forEach(s => workRows.push({
-      id: `caf-${s.id}`, date: s.date,
-      label: `☕ ${s.kind} · ${s.ref}`, sub: s.client || 'Comptoir',
-      amount: s.total, amountTone: 'green',
-    }));
-    workRows.sort(byDateDesc);
 
     // ── Fonds de roulement — chaque terme du calcul, bloc par bloc ──
     const wcRows: DetailRow[] = [
@@ -601,7 +576,7 @@ export default function GeneralReports() {
         confirmMessage: `Supprimer le client « ${d.name} » et tout son historique ? Cette action est définitive.`,
       });
     });
-    (['cafeteria', 'lavage'] as const).forEach(k => reports[k].clientDebts.forEach(d => clientDebtRows.push({
+    (['magasin'] as const).forEach(k => reports[k].clientDebts.forEach(d => clientDebtRows.push({
       id: `${k}-${d.id}`, label: `${reports[k].emoji} ${d.name}`, date: d.date || undefined,
       sub: d.ref === 'REPRISE'
         ? `Dette initiale à l'ouverture du compte — ${money(d.total)}${d.paid ? `, ${money(d.paid)} déjà réglés` : ''}`
@@ -632,7 +607,7 @@ export default function GeneralReports() {
         : { text: 'Dette', tone: 'danger' as const },
       amount: inv.rest, amountTone: 'red',
     }));
-    (['cafeteria', 'lavage'] as const).forEach(k => reports[k].supplierDebts.forEach(d => supplierDebtRows.push({
+    (['magasin'] as const).forEach(k => reports[k].supplierDebts.forEach(d => supplierDebtRows.push({
       id: `${k}-${d.id}`, label: `${reports[k].emoji} ${d.name}`, sub: d.ref, amount: d.rest, amountTone: 'red',
     })));
     supplierDebtRows.sort((a, b) => b.amount - a.amount);
@@ -682,32 +657,20 @@ export default function GeneralReports() {
       alerts:       { title: 'Alertes', icon: AlertTriangle, subtitle: 'Stock bas et péremptions', rows: alertRows, total: alertRows.reduce((s, r) => s + r.amount, 0), totalLabel: 'Valeur concernée', note: 'Alertes calculées — non supprimables.' },
       banks:        { title: 'Comptes bancaires', icon: Landmark, subtitle: 'Solde de chaque compte et ce que la période y a fait', rows: bankRows, total: treasury.bankTotal, totalLabel: 'Total en banque', note: `Sur la période : ${money(treasury.bankOpening)} au départ, +${money(treasury.bankIn)} reçus, −${money(treasury.bankOut)} sortis. Le solde d'un compte est son solde d'ouverture plus TOUS ses mouvements, quelle que soit la période affichée. Ouvrez « Caisse & Banques » pour l'historique complet d'un compte.` },
       flux:         { title: 'Journal de la période', icon: Layers, subtitle: 'Chaque opération de la station, toutes activités confondues', rows: fluxRows, total: treasury.net, totalLabel: 'Flux net', note: `+${money(treasury.inflow)} encaissés et −${money(treasury.outflow)} décaissés EN ESPÈCES sur ${treasury.counts.movements} opération(s), dont ${treasury.counts.ledgerLines} issues du grand livre. ${money(treasury.bankMoves)} ont bougé en banque sans passer par un tiroir (virements, achats et dépenses réglés par la banque, TPE). Un document qui a déjà écrit sa ligne au grand livre (achat réglé, dépense payée, brigade clôturée) n'est compté qu'une fois.` },
-      workers:      { title: 'Employés de la station', icon: UsersRound, subtitle: 'Tous les employés, toutes activités confondues', rows: workerRows, total: workforce.totals.dueNow, totalLabel: 'Reste à régler', note: `${workforce.totals.workers} employé(s), dont ${workforce.totals.withAccount} avec un compte actif. Le montant de chaque ligne est ce qu'il reste à lui verser aujourd'hui. Ouvrez « Employés & Personnel » pour le dossier complet de chacun.` },
+      workers:      { title: 'Employés de la station', icon: UsersRound, subtitle: 'Tous les employés, toutes activités confondues', rows: workerRows, total: 0, totalLabel: 'Reste à régler', note: `${workforce.totals.workers} employé(s), dont ${workforce.totals.withAccount} avec un compte actif. Le montant de chaque ligne est ce qu'il reste à lui verser aujourd'hui. Ouvrez « Employés & Personnel » pour le dossier complet de chacun.` },
       salaries:     { title: 'Salaires versés', icon: Banknote, subtitle: 'Chaque paiement de la période', rows: salaryRows, total: workforce.totals.salariesPaid, totalLabel: 'Total versé', note: `${money(workforce.totals.acomptes)} d'acomptes ont par ailleurs été avancés sur la période. Les salaires se corrigent depuis la fiche de l'employé concerné.` },
       brigades:     { title: 'Brigades — les ventes de carburant', icon: Fuel, subtitle: 'Chaque brigade, ses litres et ce qui est rentré', rows: brigadeRows, total: reports.carburant.fuelBrigades.reduce((s, b) => s + b.revenue, 0), totalLabel: "Chiffre d'affaires", note: `${reports.carburant.fuelLiters.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} L vendus. Le chiffre d'affaires du carburant vient des BRIGADES : les pistolets donnent les litres, la comptabilité de clôture dit ce qui est rentré en espèces, par TPE, en bons clients, et ce qui manque. Corrigez une brigade depuis l'écran Brigades.` },
-      works:        { title: 'Travaux & prestations', icon: Car, subtitle: 'Lavages, vidanges et ventes cafétéria de la période', rows: workRows, total: workRows.reduce((s, r) => s + r.amount, 0), totalLabel: 'Total facturé' },
       workingCapital: { title: 'Fonds de roulement', icon: Scale, subtitle: 'Chaque terme du calcul, ligne par ligne', rows: wcRows, total: workingCapital.workingCapital, totalLabel: 'Fonds de roulement', note: `Trésorerie ${money(workingCapital.treasuryTotal)} + créances ${money(workingCapital.receivablesTotal)} + stock ${money(workingCapital.stockValue)} − dettes ${money(workingCapital.payablesTotal)}. La trésorerie, ce sont les caisses (${money(workingCapital.cashTotal)}) et les comptes bancaires (${money(workingCapital.bankTotal)}). Les caisses sont les quatre tiroirs de l'écran Caisse Générale : ${money(workingCapital.activitiesCash)} dans les activités et ${money(workingCapital.financeCash)} en Finance. Le tiroir commun du grand livre en contient ${money(workingCapital.drawerCash)} — l'argent que les activités y ont déposé y dort aussi, et leurs caisses le portent déjà.` },
       stockSell:    { title: 'Stock au prix de vente', icon: TrendingUp, subtitle: "Ce que la réserve rapportera si tout part au prix affiché", rows: stockSellRows, total: stockValuation.sellValue, totalLabel: 'Valeur de vente', note: `Au prix d'achat la même réserve vaut ${money(stockValuation.buyValue)} : l'écart, ${money(stockValuation.margin)}, est une marge LATENTE — elle n'existe que si la marchandise se vend.` },
       cogs:         { title: 'Coût des marchandises vendues', icon: Layers, subtitle: 'Ce que les ventes de la période ont réellement coûté', rows: cogsRows, total: global.cogs, totalLabel: 'Coût total', note: `Ventes ${money(global.salesTotal)} − coût des marchandises ${money(global.cogs)} = marge brute ${money(global.grossMargin)}. C'est la part du prix de vente qui n'est PAS un gain : les litres achetés, les ingrédients, le prix d'achat des articles.` },
     };
-  }, [global, reports, app, biz, range, dispatch, cafeteriaBiz, lavageBiz, inventaireLosses, inventaireLossTotal,
+  }, [global, reports, app, biz, range, dispatch, magasinBiz, inventaireLosses, inventaireLossTotal,
     treasury, workforce, workingCapital, stockValuation]);
 
   const activeReport: PartReport | null = PART_SECTIONS.includes(active)
     ? reports[active as 'carburant' | ModuleKey]
     : null;
 
-  /**
-   * Les employés de l'activité affichée, mais SEULEMENT quand c'est une activité
-   * de service (Lavage & Vidange) : son rapport déplie alors, employé par
-   * employé, les travaux de la période. Les pompistes et la cafétéria n'ont pas
-   * de travaux nominatifs — leur activité se lit dans « Employés & Personnel ».
-   */
-  const serviceWorkers: WorkforceWorker[] = useMemo(() => {
-    const key = active as ModuleKey;
-    if (!MODULES[key]?.isService) return [];
-    return workforce.workers.filter(w => w.part === key);
-  }, [workforce, active]);
   const activeInfo = SECTIONS.find(s => s.id === active)!;
   const ActiveIcon = activeInfo.icon;
 
@@ -746,7 +709,7 @@ export default function GeneralReports() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-4xl font-black text-blue-900 uppercase italic tracking-tighter leading-none">Rapports Généraux</h1>
-          <p className="text-slate-500 font-medium mt-2 italic leading-relaxed">Bilan consolidé et détaillé de toutes les activités : carburant, cafétéria et lavage & vidange.</p>
+          <p className="text-slate-500 font-medium mt-2 italic leading-relaxed">Bilan consolidé et détaillé de toutes les activités : carburant et magasin.</p>
         </div>
         <button onClick={handlePrint} className="btn-primary h-14 px-10 text-[11px] uppercase tracking-[0.25em] italic font-black flex items-center gap-3 shrink-0">
           <Printer className="w-4 h-4" /> Imprimer {activeReport ? 'la fiche' : 'la fiche globale'}
@@ -880,7 +843,7 @@ export default function GeneralReports() {
                   {active === 'zakat' && <ZakatView inputs={zakatInputs} config={zakatConfig} onConfig={setZakatConfig} />}
                   {active === 'employes' && <WorkforceView report={workforce} />}
                   {active === 'tresorerie' && <TreasuryView report={treasury} />}
-                  {activeReport && <ReportView report={activeReport} serviceWorkers={serviceWorkers} />}
+                  {activeReport && <ReportView report={activeReport} />}
                 </motion.div>
               </AnimatePresence>
             </div>
@@ -957,9 +920,9 @@ function OverviewCard({ icon: Icon, label, value, sub, tone = 'blue', onClick, c
  * les ingrédients ont coûté 12 DA rapporte 18 DA. Le coût des marchandises est
  * donc montré explicitement entre les ventes et la marge.
  */
-function ResultBand({ salesTotal, cogs, grossMargin, chargesTotal, destroyedValue, lossValue, netGain, salesCount, onOpenCard }: {
+function ResultBand({ salesTotal, cogs, grossMargin, chargesTotal, destroyedValue, netGain, salesCount, onOpenCard }: {
   salesTotal: number; cogs: number; grossMargin: number; chargesTotal: number;
-  destroyedValue: number; lossValue: number; netGain: number; salesCount: number;
+  destroyedValue: number; netGain: number; salesCount: number;
   onOpenCard: (k: CardKey) => void;
 }) {
   const positive = netGain >= 0;
@@ -969,7 +932,6 @@ function ResultBand({ salesTotal, cogs, grossMargin, chargesTotal, destroyedValu
     { label: 'Marge brute', value: grossMargin, sign: '=', tone: 'text-blue-700' },
     { label: 'Dépenses + salaires', value: chargesTotal, sign: '−', tone: 'text-red-600' },
     ...(destroyedValue > 0 ? [{ label: 'Destructions', value: destroyedValue, sign: '−' as const, tone: 'text-red-600' }] : []),
-    ...(lossValue > 0 ? [{ label: 'Pertes de production', value: lossValue, sign: '−' as const, tone: 'text-red-600' }] : []),
     { label: 'Gain net', value: netGain, sign: '=', tone: positive ? 'text-emerald-600' : 'text-red-600' },
   ];
 
@@ -1123,7 +1085,7 @@ function GlobalOverview({ global: g, workforce: wf, treasury: tr, workingCapital
           qui est sorti, et ce qui reste réellement dans la poche. */}
       <ResultBand
         salesTotal={g.salesTotal} cogs={g.cogs} grossMargin={g.grossMargin}
-        chargesTotal={chargesTotal} destroyedValue={g.destroyedValue} lossValue={g.lossValue}
+        chargesTotal={chargesTotal} destroyedValue={g.destroyedValue}
         netGain={g.netGain} salesCount={g.counts.sales}
         onOpenCard={onOpenCard}
       />
@@ -1246,7 +1208,7 @@ function GlobalOverview({ global: g, workforce: wf, treasury: tr, workingCapital
           <OverviewCard icon={UsersRound} tone="blue" label="Employés" value={String(wf.totals.workers)} sub={`${wf.totals.withAccount} compte(s) actif(s)`} onClick={() => onOpenCard('workers')} cta="Voir le détail" />
           <OverviewCard icon={Banknote} tone="green" label="Salaires versés" value={money(wf.totals.salariesPaid)} sub={`${money(wf.totals.acomptes)} d'acomptes`} onClick={() => onOpenCard('salaries')} cta="Chaque paiement" />
           <OverviewCard icon={Target} tone="purple" label="Brigades couvertes" value={String(wf.totals.brigades)} sub={`${wf.totals.liters.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} L vendus`} onClick={() => onOpenCard('brigades')} cta="Voir les brigades" />
-          <OverviewCard icon={Car} tone="cyan" label="Travaux lavage / vidange" value={String(wf.totals.works)} sub={`${wf.totals.sessions} sessions cafétéria`} onClick={() => onOpenCard('works')} cta="Voir le détail" />
+          <OverviewCard icon={Clock} tone="cyan" label="Sessions de travail" value={String(wf.totals.sessions)} sub="postes de caisse ouverts" onClick={() => onSelect('employes')} cta="Voir le détail" />
         </div>
         <div className="card-glass overflow-hidden">
           <div className="overflow-x-auto custom-scrollbar">
@@ -1255,7 +1217,6 @@ function GlobalOverview({ global: g, workforce: wf, treasury: tr, workingCapital
                 <th className="table-head">Activité</th><th className="table-head text-right">Employés</th>
                 <th className="table-head text-right">Salaires versés</th><th className="table-head text-right">Acomptes</th>
                 <th className="table-head text-right">Absences</th><th className="table-head text-right">Activité</th>
-                <th className="table-head text-right">Parts à régler</th>
               </tr></thead>
               <tbody>
                 {wf.parts.map(p => (
@@ -1266,7 +1227,6 @@ function GlobalOverview({ global: g, workforce: wf, treasury: tr, workingCapital
                     <td className="table-cell tabular-nums text-right text-amber-700">{money(p.acomptes)}</td>
                     <td className="table-cell tabular-nums text-right text-red-600">{money(p.absences)}</td>
                     <td className="table-cell tabular-nums text-right text-blue-700">{p.activityValue} {p.activityLabel.toLowerCase()}</td>
-                    <td className={cn('table-cell tabular-nums text-right font-black', p.dueNow > 0 ? 'text-red-600' : 'text-slate-400')}>{money(p.dueNow)}</td>
                   </tr>
                 ))}
               </tbody>

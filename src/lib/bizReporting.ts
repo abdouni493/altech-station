@@ -9,7 +9,7 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 import {
-  ModuleState, ModuleKey, MODULES, prestationsOf, isReversedSale, netCashOfSale,
+  ModuleState, ModuleKey, MODULES, isReversedSale, netCashOfSale,
   bizExpensePaidInCash, BizDocPayment,
 } from './bizConfig';
 import { unpaidSupplierInvoices, purchasePaid, purchaseRest } from './supplierDebt';
@@ -78,15 +78,14 @@ export interface CaisseMovementRow {
 }
 export interface DestructionRow {
   id: string; name: string; qty: number; value: number; reason?: string; date: string;
-  /** D'où vient le produit détruit : le catalogue (stock) ou le comptoir. */
-  source: 'stock' | 'comptoir';
+  /** D'où vient le produit détruit — le catalogue (stock). */
+  source: 'stock';
   unit?: string;
   unitPrice: number;
   category?: string;
   createdBy?: string;
   notes?: string;
 }
-export interface ProductionRow { id: string; name: string; date: string; outputQuantity: number; unit?: string; totalValue: number; totalCost: number; hasLoss: boolean; lossQuantity: number; lossValue: number; }
 /**
  * Une vente ANNULÉE de la période — retour ou échange. Elle ne pèse plus dans le
  * chiffre d'affaires ni dans les gains (sa marchandise est revenue en stock),
@@ -136,9 +135,6 @@ export interface PartReport {
   expensesTotal: number;
   salariesPaid: number;         // paiements employés sur la période
   acomptesPeriod: number;       // acomptes versés sur la période
-  productionValue: number;
-  productionCost: number;
-  lossValue: number;
   destroyedValue: number;
   clientDebtTotal: number;      // encours (toutes dates), avances clients déduites
   /**
@@ -151,7 +147,7 @@ export interface PartReport {
   supplierDebtTotal: number;    // encours (toutes dates)
   stockValue: number;
   caisseBalance: number;
-  netGain: number;              // marge brute − dépenses − salaires − destructions − pertes
+  netGain: number;              // marge brute − dépenses − salaires − destructions
 
   // Detail collections
   sales: SaleRow[];
@@ -166,7 +162,6 @@ export interface PartReport {
   workers: WorkerRow[];
   caisse: CaisseRow[];
   destructions: DestructionRow[];
-  productions: ProductionRow[];
   returns: ReturnRow[];
   /** Chaque référence en stock, valorisée — le détail de `stockValue`. */
   stockLines: StockLineRow[];
@@ -264,11 +259,6 @@ export function moduleCaisseMovements(
       id: `sale-${l.id}`, date: l.date, nature: 'Vente',
       label: `Vente ${x.ref} — ${x.clientName}`, amount: l.amount,
     }))),
-    ...(st.reparations || []).flatMap(r => docPaymentSlices(r, num(r.paid)).map(l => ({
-      id: `rep-${l.id}`, date: l.date, nature: 'Vente',
-      label: `${r.kind === 'lavage' ? 'Lavage' : r.kind === 'reparation' ? 'Vidange' : 'Lavage + Vidange'} ${r.ref} — ${r.clientName}`,
-      amount: l.amount,
-    }))),
     // Un règlement encaissé sur la DETTE INITIALE d'un client est de l'argent
     // qui entre dans le tiroir, exactement comme le règlement d'une facture.
     // Il ne s'appuie sur aucun document : sans cette ligne, la caisse ignorait
@@ -354,19 +344,12 @@ export interface SoldItemRef { productId?: string; productName: string; qty?: nu
  * (`bizAnalytics`) s'en servent tous les deux — sans quoi les deux écrans
  * pourraient annoncer deux gains différents pour le même produit.
  *
- * Un produit vendu ne vient pas forcément du catalogue : une production mise au
- * comptoir et une fiche technique vendue en direct portent leur PROPRE coût de
- * revient (`purchasePrice` / `costPerUnit`). Sans ces tables, la vente d'une
- * production compterait pour 0 DA de coût et son « gain » vaudrait le prix de
- * vente entier (30 DA affichés au lieu des 18 DA réellement gagnés).
+ * Le coût figé sur la ligne de vente fait toujours foi quand il existe : le
+ * prix d'achat du produit a pu changer depuis.
  */
 export function makeCostResolver(st: ModuleState) {
   const prodById = new Map(st.products.map(p => [p.id, p]));
   const prodByName = new Map(st.products.map(p => [p.name, p]));
-  const comptoirById = new Map((st.comptoir || []).map(c => [c.id, c]));
-  const comptoirByName = new Map((st.comptoir || []).map(c => [c.productName, c]));
-  const ficheById = new Map((st.fiches || []).map(f => [f.id, f]));
-  const ficheByName = new Map((st.fiches || []).map(f => [f.name, f]));
 
   /** Coût de revient d'UNE unité vendue, quelle que soit sa provenance. */
   const unitCostOf = (it: SoldItemRef): number => {
@@ -376,36 +359,26 @@ export function makeCostResolver(st: ModuleState) {
     const id = it.productId || '';
     const p = prodById.get(id) || prodByName.get(it.productName);
     if (p) return p.purchasePrice || 0;
-    const c = comptoirById.get(id) || comptoirByName.get(it.productName);
-    if (c) return c.purchasePrice || 0;
-    const f = ficheById.get(id) || ficheByName.get(it.productName);
-    if (f) return f.costPerUnit || 0;
     return 0;
   };
   /** Unité d'affichage d'une ligne, prise là où le produit existe vraiment. */
   const unitOf = (it: SoldItemRef): string | undefined => {
     const id = it.productId || '';
-    return (prodById.get(id) || prodByName.get(it.productName))?.unit
-      || (comptoirById.get(id) || comptoirByName.get(it.productName))?.unit
-      || (ficheById.get(id) || ficheByName.get(it.productName))?.sellUnit;
+    return (prodById.get(id) || prodByName.get(it.productName))?.unit;
   };
   const costOfItem = (it: SoldItemRef): number => unitCostOf(it) * (it.qty || 0);
   /** Catégorie affichée d'une ligne vendue. */
   const categoryOf = (it: SoldItemRef): string | undefined => {
     const id = it.productId || '';
-    return (prodById.get(id) || prodByName.get(it.productName))?.categoryName
-      || (comptoirById.get(id) || comptoirByName.get(it.productName))?.categoryName
-      || (ficheById.get(id) || ficheByName.get(it.productName))?.categoryName;
+    return (prodById.get(id) || prodByName.get(it.productName))?.categoryName;
   };
   /** Code-barres, quand la ligne pointe un produit du catalogue. */
   const barcodeOf = (it: SoldItemRef): string | undefined =>
     (prodById.get(it.productId || '') || prodByName.get(it.productName))?.barcode;
-  /** D'où vient la marchandise — sert à séparer produits et productions. */
+  /** D'où vient la marchandise vendue. */
   const kindOf = (it: SoldItemRef): SoldItemKind => {
     const id = it.productId || '';
     if (prodById.get(id) || prodByName.get(it.productName)) return 'catalogue';
-    if (comptoirById.get(id) || comptoirByName.get(it.productName)) return 'production';
-    if (ficheById.get(id) || ficheByName.get(it.productName)) return 'fiche';
     return 'autre';
   };
 
@@ -501,46 +474,27 @@ export function computeModuleReport(
 
   const salesInRange = st.sales.filter(s => within(s.date, from, to));
   // Une vente retournée ou échangée N'EST PLUS une vente : les articles sont
-  // revenus en stock (ou au comptoir) et, pour un échange, c'est la vente de
+  // revenus en stock et, pour un échange, c'est la vente de
   // remplacement qui porte le panier. La compter ici la facturait une deuxième
   // fois — le rapport annonçait un chiffre d'affaires et un gain sur de la
   // marchandise qui n'avait jamais quitté la maison.
   const effectiveSales = salesInRange.filter(s => !isReversedSale(s));
   const reversedSales = salesInRange.filter(isReversedSale);
-  const repsInRange = (st.reparations || []).filter(r => within(r.date, from, to));
   const purchasesInRange = st.purchases.filter(p => within(p.date, from, to));
   const expensesInRange = st.expenses.filter(e => within(e.date, from, to));
   // Les dépenses de la station imputées à cette partie : elles sont à elle.
   const appExpensesInRange = appExpensesOfPart(key, appExpenses)
     .filter(e => within(e.date, from, to));
-  const productionsInRange = (st.productions || []).filter(p => within(p.date, from, to));
   const destructionsInRange = (st.destructions || []).filter(d => within(d.date, from, to) && !d.recovered);
 
-  // ── Sales rows (invoices + finalized services) ──
-  const sales: SaleRow[] = [
-    ...effectiveSales.map(s => ({
+  // ── Sales rows (invoices) ──
+  const sales: SaleRow[] = effectiveSales
+    .map(s => ({
       id: s.id, ref: s.ref, kind: 'Vente', date: s.date, client: s.clientName,
       total: s.total, paid: s.paid, rest: s.rest,
       items: s.items.map(it => ({ name: it.productName, qty: it.qty, unitPrice: it.unitPrice, total: it.total ?? it.qty * it.unitPrice })),
-    })),
-    ...repsInRange.map(r => ({
-      id: r.id, ref: r.ref,
-      kind: r.kind === 'lavage' ? 'Lavage' : r.kind === 'reparation' ? 'Vidange' : 'Lavage + Vidange',
-      date: r.date, client: r.clientName,
-      total: r.total, paid: r.paid, rest: r.rest,
-      items: [
-        // One line per prestation performed, then the products, then the remise.
-        ...prestationsOf(r).map(p => ({
-          name: `${p.kind === 'lavage' ? 'Lavage' : 'Vidange'} — ${p.label}`,
-          qty: 1, unitPrice: p.amount, total: p.amount,
-        })),
-        ...(r.usedProducts || []).map(it => ({ name: it.productName, qty: it.qty, unitPrice: it.unitPrice, total: it.total ?? it.qty * it.unitPrice })),
-        ...(r.discountAmount
-          ? [{ name: `Remise${r.discountType === 'percent' ? ` ${r.discountValue}%` : ''}`, qty: 1, unitPrice: -r.discountAmount, total: -r.discountAmount }]
-          : []),
-      ],
-    })),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // ── Sales by product (revenue / cost / gain) ──
   const bp: Record<string, { qty: number; revenue: number; cost: number; unit?: string }> = {};
@@ -551,30 +505,12 @@ export function computeModuleReport(
     bp[k].revenue += it.total ?? it.qty * it.unitPrice;
     bp[k].cost += costOfItem(it);
   }));
-  repsInRange.forEach(r => (r.usedProducts || []).forEach(it => {
-    const k = it.productName;
-    (bp[k] ||= { qty: 0, revenue: 0, cost: 0, unit: unitOf(it) });
-    bp[k].qty += it.qty;
-    bp[k].revenue += it.total ?? it.qty * it.unitPrice;
-    bp[k].cost += costOfItem(it);
-  }));
-  // Prestations are pure margin (no goods behind them) and are split by nature so
-  // the report says how much lavage and how much vidange was sold.
-  repsInRange.forEach(r => prestationsOf(r).forEach(p => {
-    const k = p.kind === 'lavage' ? 'Prestations — Lavage' : 'Prestations — Vidange';
-    (bp[k] ||= { qty: 0, revenue: 0, cost: 0, unit: 'prestation' });
-    bp[k].qty += 1;
-    bp[k].revenue += Number(p.amount) || 0;
-  }));
   // Remises are a negative revenue line, so the CA of this table reconciles with
   // the invoiced totals (which are net of the remise).
-  const discountsTotal =
-    repsInRange.reduce((s, r) => s + (r.discountAmount || 0), 0)
-    + effectiveSales.reduce((s, x) => s + (x.reduction || 0), 0);
+  const discountsTotal = effectiveSales.reduce((s, x) => s + (x.reduction || 0), 0);
   if (discountsTotal > 0) {
     bp['Remises accordées'] = {
-      qty: repsInRange.filter(r => (r.discountAmount || 0) > 0).length
-        + effectiveSales.filter(x => (x.reduction || 0) > 0).length,
+      qty: effectiveSales.filter(x => (x.reduction || 0) > 0).length,
       revenue: -discountsTotal, cost: 0, unit: 'remise',
     };
   }
@@ -605,7 +541,6 @@ export function computeModuleReport(
     openDocRest.set(clientId, (openDocRest.get(clientId) || 0) + rest);
   };
   for (const x of st.sales) bumpRest(x.clientId, num(x.rest));
-  for (const r of (st.reparations || [])) bumpRest(r.clientId, num(r.rest));
 
   const clientDebts: DebtRow[] = [
     // La REPRISE du compte est une créance comme une autre : elle figure au
@@ -619,7 +554,6 @@ export function computeModuleReport(
       };
     }).filter(r => r.rest > 0),
     ...st.sales.filter(s => s.rest > 0).map(s => ({ id: s.id, ref: s.ref, name: s.clientName, date: s.date, total: s.total, paid: s.paid, rest: s.rest })),
-    ...(st.reparations || []).filter(r => r.rest > 0).map(r => ({ id: r.id, ref: r.ref, name: r.clientName, date: r.date, total: r.total, paid: r.paid, rest: r.rest })),
     // L'avance détenue, en ligne NÉGATIVE : le tableau continue de montrer chaque
     // pièce pour ce qu'elle vaut, et son total dit enfin ce qu'on peut réclamer.
     ...(st.clients || []).map(c => {
@@ -690,18 +624,16 @@ export function computeModuleReport(
     .map(c => ({ id: c.id, type: c.type, amount: c.amount, date: c.date, description: c.description, category: c.category }))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Les destructions viennent de la Gestion de stock ET du Comptoir : les deux
-  // sont des pertes de marchandise qui pèsent sur le résultat de la partie.
+  // Les destructions viennent de la Gestion de stock : ce sont des pertes de
+  // marchandise qui pèsent sur le résultat de la partie.
   const destructions: DestructionRow[] = destructionsInRange
     .map(d => ({
       id: d.id, name: d.productName, qty: d.qty, value: d.value, reason: d.reason, date: d.date,
-      source: (d.source === 'stock' ? 'stock' : 'comptoir') as 'stock' | 'comptoir',
+      source: 'stock' as const,
       unit: d.unit, unitPrice: d.unitPrice, category: d.categoryName,
       createdBy: d.createdBy, notes: d.notes,
     }))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const productions: ProductionRow[] = productionsInRange
-    .map(p => ({ id: p.id, name: p.name, date: p.date, outputQuantity: p.outputQuantity, unit: p.unit, totalValue: p.totalValue, totalCost: p.totalCost, hasLoss: p.hasLoss, lossQuantity: p.lossQuantity, lossValue: p.lossValue }));
 
   // ── Retours & échanges (ventes annulées de la période) ──
   const returns: ReturnRow[] = reversedSales
@@ -728,8 +660,8 @@ export function computeModuleReport(
   // les ventes de la période mais via `netCashOfSale` : une vente retournée n'y
   // laisse que ce qui n'a pas été remboursé, une vente échangée rien du tout
   // (c'est son remplacement qui porte l'argent).
-  const salesTotal = effectiveSales.reduce((s, x) => s + x.total, 0) + repsInRange.reduce((s, x) => s + x.total, 0);
-  const salesPaid = salesInRange.reduce((s, x) => s + netCashOfSale(x), 0) + repsInRange.reduce((s, x) => s + x.paid, 0);
+  const salesTotal = effectiveSales.reduce((s, x) => s + x.total, 0);
+  const salesPaid = salesInRange.reduce((s, x) => s + netCashOfSale(x), 0);
   const returnsTotal = returns.reduce((s, x) => s + x.total, 0);
   const refundedTotal = returns.reduce((s, x) => s + x.refunded, 0);
   const restockedCost = returns.reduce((s, x) => s + x.restockedCost, 0);
@@ -741,9 +673,6 @@ export function computeModuleReport(
     + appExpensesInRange.reduce((s: number, x: any) => s + num(x.amount), 0);
   const salariesPaid = salaryRows.reduce((s, x) => s + x.amount, 0);
   const acomptesPeriod = acompteRows.reduce((s, x) => s + x.amount, 0);
-  const productionValue = productionsInRange.reduce((s, x) => s + x.totalValue, 0);
-  const productionCost = productionsInRange.reduce((s, x) => s + x.totalCost, 0);
-  const lossValue = productionsInRange.reduce((s, x) => s + x.lossValue, 0);
   const destroyedValue = destructionsInRange.reduce((s, x) => s + x.value, 0);
   const clientDebtTotal = Math.max(0, clientDebts.reduce((s, x) => s + x.rest, 0));
   const supplierDebtTotal = supplierDebts.reduce((s, x) => s + x.rest, 0);
@@ -754,16 +683,16 @@ export function computeModuleReport(
   // appelle aussi : les deux écrans ne peuvent donc plus annoncer deux soldes.
   const caisseMovements = moduleCaisseMovements(st, key, txs, appExpenses);
   const caisseBalance = caisseMovements.reduce((s, m) => s + m.amount, 0);
-  const netGain = grossMargin - expensesTotal - salariesPaid - destroyedValue - lossValue;
+  const netGain = grossMargin - expensesTotal - salariesPaid - destroyedValue;
 
   return {
     key, label: cfg.label, emoji: cfg.emoji, from, to,
     salesTotal, salesPaid, returnsTotal, refundedTotal, restockedCost,
     purchasesTotal, purchasesPaid, cogs, grossMargin,
-    expensesTotal, salariesPaid, acomptesPeriod, productionValue, productionCost, lossValue, destroyedValue,
+    expensesTotal, salariesPaid, acomptesPeriod, destroyedValue,
     clientDebtTotal, clientAdvanceTotal, supplierDebtTotal, stockValue, caisseBalance, netGain,
     sales, purchases, salesByProduct, clientDebts, supplierDebts, expenses, expensesByCategory,
-    stockAlerts, expiryAlerts, workers, caisse, destructions, productions, returns,
+    stockAlerts, expiryAlerts, workers, caisse, destructions, returns,
     stockLines: st.products
       .map(p => ({
         id: p.id, name: p.name, category: p.categoryName, qty: p.currentQty,
@@ -774,7 +703,7 @@ export function computeModuleReport(
     fuelBrigades: [], fuelLiters: 0,
     counts: {
       products: st.products.length, clients: st.clients.length, suppliers: st.suppliers.length,
-      sales: effectiveSales.length + repsInRange.length, purchases: purchasesInRange.length,
+      sales: effectiveSales.length, purchases: purchasesInRange.length,
       workers: st.workers.length, returns: returns.length,
     },
   };
@@ -1008,12 +937,12 @@ export function computeCarburantReport(app: any, from: string, to: string): Part
     // définitives (litres livrés), d'où des compteurs de retours à zéro.
     salesTotal, salesPaid, returnsTotal: 0, refundedTotal: 0, restockedCost: 0,
     purchasesTotal, purchasesPaid, cogs, grossMargin,
-    expensesTotal, salariesPaid, acomptesPeriod, productionValue: 0, productionCost: 0, lossValue: 0, destroyedValue: 0,
+    expensesTotal, salariesPaid, acomptesPeriod, destroyedValue: 0,
     clientDebtTotal, clientAdvanceTotal, supplierDebtTotal, stockValue,
     // Le solde vient du MÊME calcul que l'écran Caisse Générale.
     caisseBalance: cash.balance, netGain,
     sales, purchases, salesByProduct, clientDebts, supplierDebts, expenses, expensesByCategory,
-    stockAlerts, expiryAlerts: [], workers, caisse: [], destructions: [], productions: [], returns: [],
+    stockAlerts, expiryAlerts: [], workers, caisse: [], destructions: [], returns: [],
     stockLines,
     caisseMovements: cash.lines, caisseFlow: { in: cash.inflow, out: cash.outflow },
     fuelBrigades: fuel.brigades, fuelLiters: fuel.liters,
@@ -1039,7 +968,7 @@ export interface GlobalReport {
   grossMargin: number; clientDebtTotal: number; supplierDebtTotal: number; stockValue: number;
   /** Les avances clients détenues par la station, toutes activités confondues. */
   clientAdvanceTotal: number;
-  destroyedValue: number; lossValue: number; netGain: number;
+  destroyedValue: number; netGain: number;
   /** Retours & échanges — CA annulé et argent rendu, toutes parties confondues. */
   returnsTotal: number; refundedTotal: number; restockedCost: number;
   stockAlerts: number; expiryAlerts: number;
@@ -1065,7 +994,6 @@ export function consolidate(parts: PartReport[], from: string, to: string): Glob
     supplierDebtTotal: sum(p => p.supplierDebtTotal),
     stockValue: sum(p => p.stockValue),
     destroyedValue: sum(p => p.destroyedValue),
-    lossValue: sum(p => p.lossValue),
     netGain: sum(p => p.netGain),
     returnsTotal: sum(p => p.returnsTotal),
     refundedTotal: sum(p => p.refundedTotal),

@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   Users, Plus, Phone, MapPin, History, TrendingUp, CircleDollarSign,
-  FileBarChart, Receipt, Eye, Car, IdCard, ShoppingBag,
+  FileBarChart, Receipt, Eye, IdCard, ShoppingBag,
   AlertTriangle, DollarSign, MoreVertical, Search, X, Flag, Wallet,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
-import { ModuleKey, MODULES, BizContact, BizCar, BizDocPayment, BizReparation, BizSale, carLabel } from '@/src/lib/bizConfig';
+import { ModuleKey, MODULES, BizContact, BizDocPayment, BizSale } from '@/src/lib/bizConfig';
 import { matchesSearch, cn } from '@/src/lib/utils';
 import { useBiz } from '@/src/store/BizContext';
 import { useBizPermission, useAppState } from '@/src/store/AppContext';
@@ -104,9 +104,6 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
       .filter((x: BizSale) => x.clientId === client.id && Number(x.rest) > 0
         && x.status !== 'retournée' && x.status !== 'échangée')
       .sort(byDate);
-    const openReps = (biz.state.reparations || [])
-      .filter((r: BizReparation) => r.clientId === client.id && Number(r.rest) > 0 && r.status !== 'canceled')
-      .sort(byDate);
 
     let settled = 0;
     // Les deux journaux du client vivent sur SA fiche (`openingPayments`,
@@ -122,7 +119,9 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
     // plus récent » commence par elle. Sans ce passage, un client qui venait
     // solder toute son ardoise laissait sa reprise intacte — et sa carte
     // continuait d'afficher une dette que plus aucune facture n'expliquait.
-    const op = clientOpening(client as any);
+    const extraSections: DossierSection[] = [];
+
+  const op = clientOpening(client as any);
     const openPaid = (client.openingPayments || []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
     const openRest = Math.max(0, op.debt - openPaid);
     if (left > 0.004 && openRest > 0) {
@@ -141,14 +140,6 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
       if (part <= 0) continue;
       const next = withPayment(doc, part, meta, currentUserName);
       biz.update('sales', { ...next, status: next.rest > 0 ? 'crédit' : 'payée' });
-      left -= part; settled += part;
-    }
-    for (const doc of openReps) {
-      if (left <= 0.004) break;
-      const part = Math.min(left, Number(doc.rest) || 0);
-      if (part <= 0) continue;
-      const next = withPayment(doc, part, meta, currentUserName);
-      biz.update('reparations', next);
       left -= part; settled += part;
     }
 
@@ -275,7 +266,6 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
            de ligne, dans le même ordre. */
         <Table head={<>
           <th className="table-head">Client</th><th className="table-head">Téléphone</th>
-          {cfg.isService && <th className="table-head">Véhicules</th>}
           <th className="table-head">Depuis</th>
           <th className="table-head text-right">Total achats</th><th className="table-head text-right">Règlements</th>
           <th className="table-head text-right">Reste dû</th><th className="table-head">État</th>
@@ -292,17 +282,6 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
                   {c.address && <div className="text-[11px] text-slate-400 truncate max-w-[220px]" title={c.address}>{c.address}</div>}
                 </td>
                 <td className="table-cell whitespace-nowrap">{c.phone || '—'}</td>
-                {cfg.isService && (
-                  <td className="table-cell">
-                    {(c.cars?.length || 0) > 0
-                      ? <div className="flex flex-wrap gap-1 max-w-[220px]">
-                        {c.cars!.map((v: BizCar) => (
-                          <Badge key={v.id || carLabel(v)} tone="info">{carLabel(v) || 'Véhicule'}</Badge>
-                        ))}
-                      </div>
-                      : <span className="text-slate-400">—</span>}
-                  </td>
-                )}
                 <td className="table-cell whitespace-nowrap text-slate-500">{c.createdAt ? formatDate(c.createdAt) : '—'}</td>
                 <td className="table-cell tabular-nums text-right font-bold text-[#002d87]">{money(st?.totals.charged || 0)}</td>
                 <td className="table-cell tabular-nums text-right text-emerald-600">{money(st?.totals.paid || 0)}</td>
@@ -486,23 +465,6 @@ export default function ModuleClients({ moduleKey }: { moduleKey: ModuleKey }) {
                       Client depuis {c.createdAt ? formatDate(c.createdAt) : 'N/A'}
                     </span>
                   </div>
-                  {/* ── Son parc, quand la partie en tient un ────────────────
-                      Un client de lavage se reconnaît à ses voitures avant de
-                      se reconnaître à son adresse : elles se lisent donc sur la
-                      carte, sans avoir à ouvrir le dossier. */}
-                  {cfg.isService && (c.cars?.length || 0) > 0 && (
-                    <div className="flex items-start gap-2.5 px-3.5 py-2.5">
-                      <Car className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <div className="min-w-0 flex flex-wrap gap-1">
-                        {c.cars!.map((v: BizCar) => (
-                          <span key={v.id || carLabel(v)}
-                            className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 leading-none">
-                            {carLabel(v) || 'Véhicule'}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* ── Les trois chiffres du compte ────────────────────────
@@ -656,7 +618,7 @@ function BizClientDossier({
   };
 
   /** Réécrit les versements d'un document et remet d'aplomb `paid` / `rest`. */
-  const rewriteDoc = (origin: 'sales' | 'reparations', doc: any, payments: BizDocPayment[]) => {
+  const rewriteDoc = (origin: 'sales', doc: any, payments: BizDocPayment[]) => {
     const paid = payments.reduce((t, x) => t + (Number(x.amount) || 0), 0);
     const total = Number(doc.total) || 0;
     const rest = Math.max(0, total - paid);
@@ -744,31 +706,6 @@ function BizClientDossier({
     () => bizClientStatement(biz.state, client, partLabel),
     [biz.state, client, partLabel]);
 
-  /** Les interventions de ce client, pour la rubrique « Parc automobile ». */
-  const interventions: BizReparation[] = useMemo(
-    () => (biz.state.reparations || []).filter((r: BizReparation) => r.clientId === client.id),
-    [biz.state.reparations, client.id]);
-
-  /** Un véhicule par plaque — ou, à défaut, par marque et modèle. */
-  const parc = useMemo(() => {
-    const map = new Map<string, {
-      label: string; plate?: string; visits: number; total: number; rest: number; last: string;
-    }>();
-    for (const r of interventions) {
-      if (r.status === 'canceled') continue;
-      const plate = r.car?.immatriculation?.trim();
-      const label = [r.car?.marque, r.car?.name].filter(Boolean).join(' ') || 'Véhicule';
-      const key = plate || label;
-      const cur = map.get(key) || { label, plate, visits: 0, total: 0, rest: 0, last: '' };
-      cur.visits += 1;
-      cur.total += Number(r.total) || 0;
-      cur.rest += Number(r.rest) || 0;
-      if (!cur.last || new Date(r.date).getTime() > new Date(cur.last).getTime()) cur.last = r.date;
-      map.set(key, cur);
-    }
-    return [...map.values()].sort((a, b) => b.total - a.total);
-  }, [interventions]);
-
   const identity: DossierGroup[] = [
     {
       title: 'Coordonnées',
@@ -791,60 +728,11 @@ function BizClientDossier({
         { label: 'Total consommé', value: money(st.totals.charged) },
         { label: 'Total encaissé', value: money(st.totals.paid) },
         { label: 'Reste dû', value: money(st.closingDebt), hint: st.closingDebt > 0 ? 'sur les documents du compte' : 'compte soldé' },
-        ...(cfg.isService ? [{ label: 'Véhicules suivis', value: `${parc.length}` }] : []),
       ],
     },
   ];
 
-  const extraSections: DossierSection[] = cfg.isService && parc.length > 0 ? [{
-    id: 'parc',
-    label: 'Parc automobile',
-    icon: Car,
-    count: parc.length,
-    hint: 'Les véhicules de ce client passés à l\'atelier',
-    render: () => (
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <header className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-200">
-          <Car className="w-4 h-4 text-[#002d87]" />
-          <h4 className="text-xs font-black uppercase tracking-wider text-[#002d87]">Véhicules ({parc.length})</h4>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50">
-              <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <th className="px-4 py-2.5">Véhicule</th>
-                <th className="px-4 py-2.5">Immatriculation</th>
-                <th className="px-4 py-2.5 text-right">Passages</th>
-                <th className="px-4 py-2.5">Dernier passage</th>
-                <th className="px-4 py-2.5 text-right">Total facturé</th>
-                <th className="px-4 py-2.5 text-right">Reste dû</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {parc.map(v => (
-                <tr key={v.plate || v.label} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 font-black text-slate-700">{v.label}</td>
-                  <td className="px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{v.plate || '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-bold text-slate-500">{v.visits}</td>
-                  <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{shortDate(v.last)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-black text-[#002d87] whitespace-nowrap">{money(v.total)}</td>
-                  <td className={cn('px-4 py-2.5 text-right tabular-nums font-black whitespace-nowrap',
-                    v.rest > 0 ? 'text-red-600' : 'text-slate-300')}>{money(v.rest)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-slate-50">
-              <tr className="text-[#002d87] font-black">
-                <td colSpan={4} className="px-4 py-3 uppercase text-[10px] tracking-widest">Total du parc</td>
-                <td className="px-4 py-3 text-right tabular-nums">{money(parc.reduce((s, v) => s + v.total, 0))}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-red-600">{money(parc.reduce((s, v) => s + v.rest, 0))}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-    ),
-  }] : [];
+  const extraSections: DossierSection[] = [];
 
   const op = clientOpening(client as any);
   const openingPaid = (client.openingPayments || []).reduce((t, x) => t + (Number(x.amount) || 0), 0);

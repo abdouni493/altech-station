@@ -69,8 +69,7 @@ const PAYMENT_MODES = ["Espèces", "Virement", "Chèque", "TPE", "Prélèvement"
  */
 const PARTS: { key: TreasuryPart; label: string; short: string; tone: string }[] = [
   { key: 'carburant', label: 'Carburant', short: '⛽ Carburant', tone: '#003087' },
-  { key: 'cafeteria', label: 'Cafétéria', short: '☕ Cafétéria', tone: '#b45309' },
-  { key: 'lavage', label: 'Lavage & Vidange', short: '💧 Lavage', tone: '#0e7490' },
+  { key: 'magasin', label: 'Magasin', short: '🏪 Magasin', tone: '#0e7490' },
   { key: 'systeme', label: 'Finance (caisse générale)', short: '🏛️ Finance', tone: '#4c1d95' },
 ];
 const PART_LABEL: Record<string, string> = Object.fromEntries(PARTS.map(p => [p.key, p.label]));
@@ -100,12 +99,11 @@ const Expenses = () => {
   const partCash = useMemo<Record<string, number>>(() => {
     // Une partie non encore chargée n'a pas de caisse : mieux vaut 0 qu'un écran
     // blanc, la saisie de la dépense n'en dépend pas.
-    const ofModule = (key: 'cafeteria' | 'lavage') =>
+    const ofModule = (key: 'magasin') =>
       biz?.[key] ? moduleCaisseBalance(biz[key], key, treasuryTransactions, expenses) : 0;
     return {
       carburant: carburantCashBalance(state),
-      cafeteria: ofModule('cafeteria'),
-      lavage: ofModule('lavage'),
+      magasin: ofModule('magasin'),
       systeme: caisseBalanceOf(treasuryTransactions),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

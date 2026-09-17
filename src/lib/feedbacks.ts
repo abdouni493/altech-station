@@ -3,7 +3,7 @@
  *
  * Un client dépose son avis depuis la page publique `/client` (aucun compte, et
  * rien d'obligatoire hormis la partie visée et le message). L'avis est rattaché
- * à UNE partie : carburant, cafétéria ou lavage — et c'est l'écran « Retours
+ * à UNE partie : carburant ou magasin — et c'est l'écran « Retours
  * clients » de cette partie qui l'affiche.
  *
  * NOM ET TÉLÉPHONE FACULTATIFS
@@ -25,7 +25,7 @@
 import { supabase } from './supabase';
 
 /** Partie de la station visée par un avis. `fuel` = station-service. */
-export type FeedbackPart = 'fuel' | 'cafeteria' | 'lavage';
+export type FeedbackPart = 'fuel' | 'magasin';
 
 export type FeedbackStatus = 'unread' | 'read';
 
@@ -64,9 +64,8 @@ export const feedbackAuthor = (f: { fullName?: string }): string =>
 export const FEEDBACK_PARTS: {
   id: FeedbackPart; label: string; short: string; emoji: string; hint: string;
 }[] = [
-  { id: 'fuel',      label: 'Carburant',            short: 'Carburant', emoji: '⛽', hint: 'Pompes, service à la piste, prix, propreté' },
-  { id: 'cafeteria', label: 'Cafétéria',            short: 'Cafétéria', emoji: '☕', hint: 'Boissons, restauration, accueil au comptoir' },
-  { id: 'lavage',    label: 'Lavage & Vidange',  short: 'Lavage',    emoji: '🧽', hint: 'Lavage du véhicule, vidange, mécanique' },
+  { id: 'fuel',    label: 'Carburant', short: 'Carburant', emoji: '⛽', hint: 'Pompes, service à la piste, prix, propreté' },
+  { id: 'magasin', label: 'Magasin',   short: 'Magasin',   emoji: '🏪', hint: 'Produits, prix, disponibilité, accueil au comptoir' },
 ];
 
 export const FEEDBACK_PART_META: Record<FeedbackPart, { label: string; short: string; emoji: string }> =
@@ -74,7 +73,7 @@ export const FEEDBACK_PART_META: Record<FeedbackPart, { label: string; short: st
 
 /** Un identifiant de partie inconnu (base plus récente que ce build) est ignoré. */
 export const isFeedbackPart = (v: unknown): v is FeedbackPart =>
-  v === 'fuel' || v === 'cafeteria' || v === 'lavage';
+  v === 'fuel' || v === 'magasin';
 
 // ─── Correspondance ligne ↔ objet ──────────────────────────────────────────────
 

@@ -194,22 +194,8 @@ export function computeModuleStock(st: ModuleState, key: ModuleKey): StockPart {
     negative: num(p.currentQty) < 0,
   }));
 
-  const comptoir: StockLine[] = (st.comptoir || []).map(c => lineOf({
-    id: `c-${c.id}`,
-    name: c.productName,
-    category: c.categoryName || 'Comptoir',
-    unit: c.unit,
-    qty: num(c.qty),
-    // Côté comptoir, `purchasePrice` est le COÛT DE REVIENT de la production et
-    // `unitPrice` le prix de vente affiché.
-    buyPrice: num(c.purchasePrice),
-    sellPrice: num(c.unitPrice),
-    negative: num(c.qty) < 0,
-  }));
-
   return partOf(key, cfg.label, cfg.emoji, [
     sectionOf('catalogue', 'Catalogue (Gestion de stock)', 'Produits achetés et matières premières', catalogue),
-    sectionOf('comptoir', 'Comptoir', 'Productions prêtes à la vente, au coût de revient', comptoir),
   ]);
 }
 
@@ -217,8 +203,7 @@ export function computeModuleStock(st: ModuleState, key: ModuleKey): StockPart {
 export function computeStockValuation(app: any, biz: BizState): StockValuation {
   const parts = [
     computeCarburantStock(app),
-    computeModuleStock(biz.cafeteria, 'cafeteria'),
-    computeModuleStock(biz.lavage, 'lavage'),
+    computeModuleStock(biz.magasin, 'magasin'),
   ];
   const buyValue = parts.reduce((s, p) => s + p.buyValue, 0);
   const sellValue = parts.reduce((s, p) => s + p.sellValue, 0);

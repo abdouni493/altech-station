@@ -7,8 +7,8 @@ import {
   Target, ChevronDown, Gauge, Receipt,
   BarChart2, Archive, UserCog, DollarSign, Building2, ChevronRight, X,
   Wallet, CalendarCheck, Shield, UserCheck, Calendar,
-  FlaskConical, Beaker, ShoppingBag, Car, Utensils, Coffee, Droplets, FileBarChart,
-  BellRing, Landmark, PiggyBank, MessageSquare, MessageCircle, Star
+  ShoppingBag, FileBarChart,
+  Landmark, PiggyBank, MessageSquare, Star
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -16,7 +16,6 @@ import { useAppState, UserPermissions, ModuleWorkerSession, AppUserRole } from "
 import { useBizAll } from "../store/BizContext";
 import { useFeedbacks } from "../store/FeedbackContext";
 import { MODULES, ModuleKey } from "../lib/bizConfig";
-import { buildRappels, countDue } from "../lib/rappels";
 
 // --- Types ---
 
@@ -58,50 +57,28 @@ const roleBadge: Record<string, { label: string; bg: string; text: string }> = {
 
 // --- Admin nav groups ---
 //
-// The sidebar is organised by "part" (activity): a reorganised Carburant part
-// (the original fuel-station app), then four new commerce/production parts
-// (Restaurant, Cafétéria, Lavage & Vidange, Magasin) whose pages live on the
-// BizContext store — itself fed by the `biz_store` row in Supabase.
+// The sidebar is organised by "part" (activity): the Carburant part (the
+// original fuel-station app), then the Magasin part whose pages live on the
+// BizContext store.
 
-// Builds a nav group for one business module from its capabilities (config).
+// Builds the nav group for the Magasin part.
 function buildModuleNavGroup(key: ModuleKey): NavGroup {
   const cfg = MODULES[key];
   const b = cfg.base;
-  const items: NavItem[] = [];
-  if (cfg.isService) {
-    items.push({ label: "Vidanges & Lavage", icon: Car,         path: `${b}/reparations` });
-    items.push({ label: "Demandes d'encaissement", icon: BellRing, path: `${b}/encaissements` });
-    items.push({ label: "Point de vente",       icon: ShoppingBag, path: `${b}/pos` });
-    items.push({ label: "Ventes",               icon: Receipt,     path: `${b}/sales` });
-    items.push({ label: "Gestion de stock",     icon: Package,     path: `${b}/stock` });
-    items.push({ label: "Inventaire",           icon: ClipboardList, path: `${b}/inventaire` });
-    items.push({ label: "Achats",               icon: ShoppingCart,path: `${b}/purchases` });
-    items.push({ label: "Clients",              icon: Users,       path: `${b}/clients` });
-    items.push({ label: "Messages clients",     icon: MessageCircle, path: `${b}/messages` });
-    items.push({ label: "Fournisseurs",         icon: Truck,       path: `${b}/suppliers` });
-    items.push({ label: "Employés",             icon: UsersRound,  path: `${b}/workers` });
-    items.push({ label: "Dépenses",             icon: CreditCard,  path: `${b}/expenses` });
-    items.push({ label: "Caisse",               icon: Wallet,      path: `${b}/caisse` });
-    items.push({ label: "Rapports",             icon: BarChart2,   path: `${b}/reports` });
-    items.push({ label: "Retours clients",      icon: MessageSquare, path: `${b}/feedbacks` });
-  } else {
-    items.push({ label: "Gestion de stock",     icon: Package,     path: `${b}/stock` });
-    items.push({ label: "Inventaire",           icon: ClipboardList, path: `${b}/inventaire` });
-    items.push({ label: "Achats",               icon: ShoppingCart,path: `${b}/purchases` });
-    if (cfg.hasProduction) {
-      items.push({ label: "Production",         icon: FlaskConical,path: `${b}/production` });
-      items.push({ label: "Comptoir",           icon: Beaker,      path: `${b}/comptoir` });
-    }
-    items.push({ label: "Point de vente",       icon: ShoppingBag, path: `${b}/pos` });
-    items.push({ label: "Ventes",               icon: Receipt,     path: `${b}/sales` });
-    items.push({ label: "Clients",              icon: Users,       path: `${b}/clients` });
-    items.push({ label: "Fournisseurs",         icon: Truck,       path: `${b}/suppliers` });
-    items.push({ label: "Employés",             icon: UsersRound,  path: `${b}/workers` });
-    items.push({ label: "Dépenses",             icon: CreditCard,  path: `${b}/expenses` });
-    items.push({ label: "Caisse",               icon: Wallet,      path: `${b}/caisse` });
-    items.push({ label: "Rapports",             icon: BarChart2,   path: `${b}/reports` });
-    items.push({ label: "Retours clients",      icon: MessageSquare, path: `${b}/feedbacks` });
-  }
+  const items: NavItem[] = [
+    { label: "Point de vente",   icon: ShoppingBag,   path: `${b}/pos` },
+    { label: "Ventes",           icon: Receipt,       path: `${b}/sales` },
+    { label: "Gestion de stock", icon: Package,       path: `${b}/stock` },
+    { label: "Inventaire",       icon: ClipboardList, path: `${b}/inventaire` },
+    { label: "Achats",           icon: ShoppingCart,  path: `${b}/purchases` },
+    { label: "Clients",          icon: Users,         path: `${b}/clients` },
+    { label: "Fournisseurs",     icon: Truck,         path: `${b}/suppliers` },
+    { label: "Employés",         icon: UsersRound,    path: `${b}/workers` },
+    { label: "Dépenses",         icon: CreditCard,    path: `${b}/expenses` },
+    { label: "Caisse",           icon: Wallet,        path: `${b}/caisse` },
+    { label: "Rapports",         icon: BarChart2,     path: `${b}/reports` },
+    { label: "Retours clients",  icon: MessageSquare, path: `${b}/feedbacks` },
+  ];
   return { id: key, label: cfg.label, items };
 }
 
@@ -139,8 +116,7 @@ const ADMIN_NAV_GROUPS: NavGroup[] = [
       { label: "Retours Clients",    icon: MessageSquare, path: "/feedbacks",      moduleId: "Retours Clients" },
     ]
   },
-  buildModuleNavGroup("cafeteria"),
-  buildModuleNavGroup("lavage"),
+  buildModuleNavGroup("magasin"),
 ];
 
 // --- Worker nav (permission-driven) ---
@@ -201,41 +177,21 @@ const DASHBOARD_ITEM: NavItem = { label: "Tableau de Bord", icon: LayoutDashboar
 
 // --- Sidebar alerts ---
 //
-// Some screens hold work that is WAITING for someone: a demande d'encaissement
-// the caisse has not collected yet, a lavage/vidange left "en attente". The
-// sidebar shows that count on the button itself (and on the collapsed section
-// header), so nobody has to open the page to notice there is something to do.
+// Un avis client jamais ouvert attend quelqu'un. La barre latérale en montre
+// le nombre sur le bouton lui-même (et sur l'en-tête de section replié), pour
+// qu'on le remarque sans avoir à ouvrir la page.
 
-/** Number of pending items per route path, e.g. `{ "/lavage/reparations": 3 }`. */
+/** Number of unread feedbacks per route path, e.g. `{ "/magasin/feedbacks": 3 }`. */
 function useNavAlerts(): Record<string, number> {
   const biz = useBizAll();
-  // Avis clients jamais ouverts — même traitement que les demandes en attente :
-  // une pastille rouge tant que personne n'a marqué l'avis comme lu.
+  // Avis clients jamais ouverts : une pastille rouge tant que personne n'a
+  // marqué l'avis comme lu.
   const { unreadByPart } = useFeedbacks();
   return useMemo(() => {
     const out: Record<string, number> = {};
     for (const key of Object.keys(MODULES) as ModuleKey[]) {
-      const mod = biz[key];
-      const base = MODULES[key].base;
-      if (!mod) continue;
-      const demandes = (mod.payRequests || []).filter(r => r.status === "pending").length;
-      const interventions = (mod.reparations || []).filter(r => r.status === "pending").length;
-      if (demandes > 0) out[`${base}/encaissements`] = demandes;
-      if (interventions > 0) out[`${base}/reparations`] = interventions;
-      if (unreadByPart[key] > 0) out[`${base}/feedbacks`] = unreadByPart[key];
-      // Rappels de passage ÉCHUS. Ils se déduisent des interventions et des
-      // délais réglés — rien n'est stocké — donc la pastille reste juste même
-      // si les délais changent, et disparaît dès que l'alerte est classée.
-      if (MODULES[key].isService) {
-        const due = countDue(buildRappels({
-          reparations: mod.reparations || [],
-          clients: mod.clients || [],
-          handled: mod.rappels || [],
-          config: mod.rappelConfig,
-          lookaheadDays: 0,
-        }));
-        if (due > 0) out[`${base}/messages`] = due;
-      }
+      if (!biz[key]) continue;
+      if (unreadByPart[key] > 0) out[`${MODULES[key].base}/feedbacks`] = unreadByPart[key];
     }
     // Partie Carburant : son écran de retours vit à la racine.
     if (unreadByPart.fuel > 0) out["/feedbacks"] = unreadByPart.fuel;
@@ -295,7 +251,7 @@ function buildWorkerNav(role: string, permissions?: UserPermissions): NavGroup[]
   return groups;
 }
 
-// --- Business-part employee nav (Restaurant / Cafétéria / Lavage / Magasin) ---
+// --- Magasin employee nav ---
 //
 // A part employee only ever sees interfaces of THEIR part, and only those the
 // admin ticked "voir" on in the employee's Permissions modal. The item list is
@@ -303,16 +259,12 @@ function buildWorkerNav(role: string, permissions?: UserPermissions): NavGroup[]
 
 /** Sidebar entry for one interface id of a part (same ids as MODULE_INTERFACES). */
 const PART_IFACE_NAV: Record<string, { label: string; icon: React.ElementType }> = {
-  reparations:   { label: "Vidanges & Lavage",    icon: Car },
-  encaissements: { label: "Demandes d'encaissement", icon: BellRing },
-  stock:       { label: "Gestion de stock",     icon: Package },
-  purchases:   { label: "Achats",               icon: ShoppingCart },
-  production:  { label: "Production",           icon: FlaskConical },
-  comptoir:    { label: "Comptoir",             icon: Beaker },
   pos:         { label: "Point de vente",       icon: ShoppingBag },
   sales:       { label: "Ventes",               icon: Receipt },
+  stock:       { label: "Gestion de stock",     icon: Package },
+  inventaire:  { label: "Inventaire",           icon: ClipboardList },
+  purchases:   { label: "Achats",               icon: ShoppingCart },
   clients:     { label: "Clients",              icon: Users },
-  messages:    { label: "Messages clients",     icon: MessageCircle },
   suppliers:   { label: "Fournisseurs",         icon: Truck },
   workers:     { label: "Employés",             icon: UsersRound },
   expenses:    { label: "Dépenses",             icon: CreditCard },
@@ -414,10 +366,10 @@ const SETTINGS_PATH: Record<string, string> = {
 
 // --- Favoris de partie ---
 //
-// Une partie ouvre douze à quatorze interfaces. Celle qu'on utilise vingt fois
-// par jour — le point de vente d'une cafétéria, les vidanges d'un lavage, les
-// brigades du carburant — se retrouvait au milieu d'une liste qu'il fallait
-// parcourir des yeux à chaque fois, souvent en la déroulant d'abord.
+// Une partie ouvre une douzaine d'interfaces. Celle qu'on utilise vingt fois
+// par jour — le point de vente du magasin, les brigades du carburant — se
+// retrouvait au milieu d'une liste qu'il fallait parcourir des yeux à chaque
+// fois, souvent en la déroulant d'abord.
 //
 // Chaque partie a maintenant SES favoris : une étoile sur n'importe quelle
 // entrée l'épingle en tête de sa section, au-dessus de la liste complète.
@@ -427,8 +379,8 @@ const SETTINGS_PATH: Record<string, string> = {
 // porte l'utilisateur — deux personnes qui partagent un poste ne s'imposent pas
 // leurs raccourcis.
 
-/** Les sections qui acceptent des favoris : les trois activités. */
-const FAVORITE_GROUPS = new Set(["carburant", "cafeteria", "lavage"]);
+/** Les sections qui acceptent des favoris : les deux activités. */
+const FAVORITE_GROUPS = new Set(["carburant", "magasin"]);
 
 const favKey = (who: string) => `altech.sidebar.favorites.${who || "anon"}`;
 
